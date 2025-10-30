@@ -24,7 +24,7 @@ render_sidebar_and_handle_ingest()
 
 # Gate until a dataset is loaded
 if not st.session_state.ingested or st.session_state.df is None:
-    st.info("Use the sidebar to ingest a dataset (Upload, URL, or Local Path).")
+    st.info("Use the sidebar to ingest a dataset (Upload or URL).")
     st.stop()
 
 # ---- Main sections (match your mockups) ----

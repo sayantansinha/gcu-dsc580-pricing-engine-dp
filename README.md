@@ -44,5 +44,6 @@ http://localhost:8501
 1. **Select Data Source**: From the sidebar, select either of the options to load the file of your choosing. Refer above for synthetic dataset generator tool. IMDB urls are also supported.
 2. **Post Data Load Panels**: Display Data, EDA, Cleaning & Pre-processing provides you with data manipulation capabilities. 
 3. **Outputs**: Once satisfied, save a cleaned `parquet` version of the file. All saved paths are displayed on the UI.
+4. **Custom Names**: You can provide custom names to your source and cleaned files, using the textbox provided, defaulted to `dataset` for source files and `cleaned` for processed files.
 
 _**Note**: The app is designed to run locally_

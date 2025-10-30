@@ -17,7 +17,7 @@ def _reset_mode_state():
 
 
 def _get_mode() -> str:
-    return st.radio("Source", ["Upload File", "From URL", "Load Local Path"], key="ingest_mode")
+    return st.radio("Source", ["Upload File", "From URL"], key="ingest_mode")
 
 
 def _ensure_mode_fresh(mode: str):
@@ -38,15 +38,15 @@ def _render_input(mode: str):
             help="Drag and drop or browse a file (max 200 MB).",
             key="upload_widget",
         )
-        return uploaded, None, None
+        return uploaded, None
 
     if mode == "From URL":
         url = st.text_input("Enter URL (CSV/Parquet/TSV/TSV.GZ)", key="url_widget")
-        return None, url, None
+        return None, url
 
     # Load Local Path
-    path = st.text_input("Local file path (CSV/Parquet)", key="local_widget")
-    return None, None, path
+    # path = st.text_input("Local file path (CSV/Parquet)", key="local_widget")
+    return None, None
 
 
 # ---------- ingestion handlers (no UI branching here) ----------
@@ -95,7 +95,7 @@ def render_sidebar_and_handle_ingest():
         st.divider()
         st.subheader("File Selector")
 
-        uploaded, url, local_path = _render_input(mode)
+        uploaded, url = _render_input(mode)
 
         st.subheader("Base name")
         base_name = st.text_input("", value="dataset", label_visibility="collapsed")
