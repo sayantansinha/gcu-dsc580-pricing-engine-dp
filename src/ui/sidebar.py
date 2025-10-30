@@ -106,7 +106,7 @@ def render_sidebar_and_handle_ingest():
                 handlers = {
                     "Upload File": lambda: _ingest_upload(uploaded, base_name),
                     "From URL": lambda: _ingest_url(url, base_name),
-                    "Load Local Path": lambda: _ingest_local(local_path, base_name),
+                    # "Load Local Path": lambda: _ingest_local(local_path, base_name),
                 }
                 msg = handlers[mode]()  # dispatch without if/elif chains
                 st.success(msg)
