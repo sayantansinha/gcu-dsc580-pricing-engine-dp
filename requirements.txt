@@ -9,3 +9,5 @@ matplotlib==3.9.2
 seaborn==0.13.2
 streamlit==1.39.0
 pandera==0.20.3
+PyYAML~=6.0.2
+toml~=0.10.2

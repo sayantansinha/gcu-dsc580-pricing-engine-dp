@@ -1,0 +1,120 @@
+[general]
+n_licenses = 5000
+seed = 42
+base_currency = "USD"
+
+[territory_weights]
+USA = 0.25
+GBR = 0.09
+CAN = 0.08
+AUS = 0.08
+DEU = 0.06
+IND = 0.1
+FRA = 0.08
+JPN = 0.06
+ESP = 0.05
+TUR = 0.04
+RUS = 0.02
+DNK = 0.05
+SRB = 0.03
+
+[media_weights]
+SVOD = 0.45
+TVOD = 0.25
+AVOD = 0.15
+PAYTV = 0.10
+BC = 0.05
+
+[platform_weights_by_media.SVOD]
+NETFLIX = 0.32
+PRIME_VIDEO = 0.22
+DISNEY_PLUS = 0.14
+HULU = 0.10
+MAX = 0.08
+PARAMOUNT_PLUS = 0.07
+PEACOCK_PREMIUM = 0.04
+APPLE_TV_PLUS = 0.03
+
+[platform_weights_by_media.TVOD]
+APPLE_TV = 0.35   # iTunes Store
+GOOGLE_PLAY_MOVIES = 0.22
+AMAZON_VIDEO_STORE = 0.22
+VUDU = 0.12
+ROKU_STORE = 0.06
+MICROSOFT_MOVIES = 0.03
+
+[platform_weights_by_media.AVOD]
+TUBI = 0.35
+ROKU_CHANNEL = 0.22
+FREEVEE = 0.18
+YOUTUBE_FREE = 0.15
+PLUTO_TV = 0.07
+XUMO = 0.03
+
+[platform_weights_by_media.PAYTV]
+SKY_UK = 0.22
+CANAL_PLUS_FR = 0.19
+DIRECTV_US = 0.18
+COMCAST_US = 0.18
+OSN_MENA = 0.12
+VIRGIN_UK = 0.11
+
+[platform_weights_by_media.BC]
+ABC_US = 0.18
+NBC_US = 0.18
+FOX_US = 0.16
+BBC_ONE_UK = 0.16
+ITV1_UK = 0.12
+TF1_FR = 0.10
+ARD_DE = 0.05
+NHK_JP = 0.05
+
+[window_days_by_media]  # min,max inclusive
+SVOD = [90, 365]
+TVOD = [14, 60]
+AVOD = [30, 120]
+PAYTV = [60, 180]
+BC = [7, 45]
+
+[units_lognorm]          # lognormal parameters (mu, sigma)
+mu = 6.5
+sigma = 0.9
+
+[price_by_territory] # median, iqr as rough bands
+USA = [25000, 12000]
+GBR = [12000, 6000]
+CAN = [9000, 4500]
+AUS = [8000, 4000]
+DEU = [10000, 5000]
+IND = [3000, 1500]
+FRA = [9000, 4500]
+JPN = [11000, 5500]
+ESP = [8000, 4000]
+TUR = [5000, 2500]
+RUS = [4000, 2000]
+DNK = [7000, 3500]
+SRB = [3000, 1500]
+
+[seasonality_month_weight]  # relative multipliers (sum ~= 12)
+1 = 0.8
+2 = 0.85
+3 = 1.0
+4 = 1.0
+5 = 1.05
+6 = 1.1
+7 = 1.15
+8 = 1.15
+9 = 1.1
+10 = 1.05
+11 = 1.0
+12 = 0.85
+
+[new_release_uplift]
+half_life_days = 180
+max_uplift = 0.25
+
+[validation_config]
+units_min = 0
+price_min = 0
+window_days_min = 7
+window_days_max = 365
