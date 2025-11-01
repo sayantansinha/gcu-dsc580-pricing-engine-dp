@@ -1,7 +1,9 @@
 import streamlit as st
 
-from src.preprocessing.cleaning import impute, iqr_filter, winsorize, encode_one_hot, encode_ordinal, scale, \
-    deduplicate, save_processed, write_manifest
+from src.services.data_io import save_processed, save_profile
+from src.services.source_data.preprocessing.cleaning import impute, iqr_filter, winsorize, encode_one_hot, \
+    encode_ordinal, scale, \
+    deduplicate
 from src.ui.common import end_tab_scroll, begin_tab_scroll, section_panel
 from src.utils.log_utils import get_logger
 
@@ -93,11 +95,13 @@ def _save_cleaned_dataset(df):
     base_out = st.text_input("Base name", value="cleaned", key="save_base")
     if st.button("Save Cleaned Dataset", type="primary"):
         out_path = save_processed(df, st.session_state.run_id, base_name=base_out)
-        mf_path = write_manifest(st.session_state.run_id, st.session_state.steps)
+        run_id = st.session_state.run_id
+        mf_path = save_profile(
+            {"run_id": run_id, "steps": st.session_state.steps},
+            f"manifest_{run_id}"
+        )
         st.success(f"Saved cleaned dataset: {out_path}")
-        LOGGER.info(f"Saved cleaned dataset: {mf_path}")
         st.success(f"Wrote transformation manifest: {mf_path}")
-        LOGGER.info(f"Wrote transformation manifest: {mf_path}")
 
 
 def render_cleaning_section():

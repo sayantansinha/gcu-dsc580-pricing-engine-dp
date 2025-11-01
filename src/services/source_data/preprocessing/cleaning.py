@@ -1,11 +1,7 @@
-import json
-import os
 from typing import Dict, List, Optional
 
 import pandas as pd
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
-
-from src.config import SETTINGS
 
 
 def impute(df: pd.DataFrame, strategy: str = "median", columns: Optional[List[str]] = None) -> pd.DataFrame:
@@ -60,16 +56,3 @@ def scale(df: pd.DataFrame, columns: List[str], method: str = "standard") -> pd.
 
 def deduplicate(df: pd.DataFrame, subset: List[str]) -> pd.DataFrame:
     return df.drop_duplicates(subset=subset)
-
-
-def save_processed(df: pd.DataFrame, run_id: str, base_name: str = "cleaned") -> str:
-    out = os.path.join(SETTINGS.PROCESSED_DIR, f"{base_name}_{run_id}.parquet")
-    df.to_parquet(out, index=False)
-    return out
-
-
-def write_manifest(run_id: str, steps: List[Dict]) -> str:
-    path = os.path.join(SETTINGS.PROFILES_DIR, f"manifest_{run_id}.json")
-    with open(path, "w") as f:
-        json.dump({"run_id": run_id, "steps": steps}, f, indent=2)
-    return path

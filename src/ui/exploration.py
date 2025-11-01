@@ -1,8 +1,8 @@
 import os
 import streamlit as st
 
-from src.analytics.eda import eda_summary
-from src.analytics.visualization import plot_hist, plot_box, plot_bar, plot_scatter, plot_datetime_counts, \
+from src.services.source_data.analytics.eda import eda_summary
+from src.services.source_data.analytics.visualization import plot_hist, plot_box, plot_bar, plot_scatter, plot_datetime_counts, \
     plot_time_of_day_hist, plot_month_box
 from src.ui.common import end_tab_scroll, begin_tab_scroll, section_panel
 from src.utils.log_utils import get_logger

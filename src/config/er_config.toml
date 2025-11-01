@@ -1,0 +1,26 @@
+[entity_resolution]
+contingency_year = 1
+min_similarity_score = 0.88
+
+[entity_resolution.iso3_to_iso2_map]
+USA = "US"
+GBR = "GB"
+CAN = "CA"
+AUS = "AU"
+DEU = "DE"
+IND = "IN"
+FRA = "FR"
+JPN = "JP"
+ESP = "ES"
+TUR = "TR"
+RUS = "RU"
+DNK = "DK"
+SRB = "RS"
+
+[entity_resolution.method_rank]
+id_exact = 5
+exact_title_norm_year = 4
+exact_title_norm = 3
+meta_year_region_votes = 2
+fuzzy_title_norm_year = 1
+no_match = 0
