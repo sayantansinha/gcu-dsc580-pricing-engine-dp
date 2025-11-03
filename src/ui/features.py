@@ -1,12 +1,13 @@
 from __future__ import annotations
+
 import os
 from datetime import datetime
-import streamlit as st
-import pandas as pd
 
-from src.config import SETTINGS
-from src.services.analytics.feature_builder import build_features
-from src.utils.log_utils import get_logger
+import streamlit as st
+
+from src.config.env_loader import SETTINGS
+from src.services.source_data.preprocessing.feature_builder import build_features
+from src.utils.log_utils import get_logger, streamlit_safe
 
 LOGGER = get_logger("ui_features")
 
@@ -31,14 +32,14 @@ def _validate_selections_ui(base: str, basics: str, ratings: str, akas: str) -> 
 
     # 2) Ensure 'tconst' exists in each file
     #    Read just the 'tconst' column to avoid heavy loads
-    processed = SETTINGS.PROCESSED_DIR
-    for label, filename in [("Base", base), ("IMDB Basics", basics), ("IMDB Ratings", ratings), ("IMDB Akas", akas)]:
-        path = os.path.join(processed, filename)
-        try:
-            # If parquet doesn't have tconst, this will raise
-            _ = pd.read_parquet(path, columns=["tconst"])
-        except Exception:
-            return False, f"'{label}' file does not contain required 'tconst' column: {filename}"
+    # processed = SETTINGS.PROCESSED_DIR
+    # for label, filename in [("Base", base), ("IMDB Basics", basics), ("IMDB Ratings", ratings), ("IMDB Akas", akas)]:
+    #     path = os.path.join(processed, filename)
+    #     try:
+    #         # If parquet doesn't have tconst, this will raise
+    #         _ = pd.read_parquet(path, columns=["tconst"])
+    #     except Exception:
+    #         return False, f"'{label}' file does not contain required 'tconst' column: {filename}"
 
     return True, ""
 
@@ -49,7 +50,7 @@ def _make_run_dir() -> str:
     os.makedirs(run_dir, exist_ok=True)
     return run_dir
 
-
+@streamlit_safe
 def render():
     st.header("Build Feature Master")
 

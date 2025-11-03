@@ -2,9 +2,21 @@
 feature_utils: small helpers for feature engineering & column ordering.
 """
 
-from typing import List
+from typing import List, Iterable
 
 import pandas as pd
+
+from src.utils.log_utils import get_logger
+
+LOGGER = get_logger("feature_utils")
+
+
+def validate_columns_exist_in_dataframe(df: pd.DataFrame, required: Iterable[str], name: str) -> None:
+    missing = set(required) - set(df.columns)
+    if missing:
+        LOGGER.error(f"{name} missing required columns: {missing}")
+        raise ValueError(f"{name} missing required columns: {missing}")
+    LOGGER.info(f"{name} columns validated successfully")
 
 
 def add_popularity_blend(df: pd.DataFrame, pv_col: str = "pv_30d") -> pd.DataFrame:

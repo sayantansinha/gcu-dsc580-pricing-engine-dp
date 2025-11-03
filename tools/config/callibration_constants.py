@@ -2,7 +2,7 @@ from typing import Final
 import numpy as np
 from numpy.random import Generator
 
-from tools.config.config_loader import load_config_from_file
+from src.config.config_loader import load_config_from_file
 
 # Config from TOML file
 _CAL_CFG = load_config_from_file("config/sim_config.toml")

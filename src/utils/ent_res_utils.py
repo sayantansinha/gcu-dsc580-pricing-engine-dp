@@ -14,18 +14,18 @@ LOGGER = get_logger("ent_res_utils")
 
 def id_entity_map(base: pd.DataFrame, core: pd.DataFrame) -> pd.DataFrame:
     """
-    Deterministic mapping using tconst in base['title_id']
+    Deterministic mapping using title_id in base['title_id']
     :param base: synthetic dataset
     :param core: IMDB core dataset
     :return ID matched dataframe
     """
     # exact ID join
-    id_matched = base.merge(core[["tconst"]], left_on="title_id", right_on="tconst", how="left")
-    id_matched = id_matched.dropna(subset=["tconst"])  # keep hits
+    id_matched = base.merge(core[["title_id"]], left_on="title_id", right_on="title_id", how="left")
+    id_matched = id_matched.dropna(subset=["title_id"])  # keep hits
     if id_matched.empty:
-        return pd.DataFrame(columns=["license_id", "tconst", "method", "match_score"])
+        return pd.DataFrame(columns=["license_id", "title_id", "method", "match_score"])
 
-    out = id_matched[["license_id", "tconst"]].drop_duplicates()
+    out = id_matched[["license_id", "title_id"]].drop_duplicates()
     out["method"] = "id_exact"
     out["match_score"] = 1.0
     return out
@@ -86,14 +86,14 @@ def resolve_entities(
 ) -> pd.DataFrame:
     """
     Resolve using release year and region (territory)
-    Returns DataFrame[license_id, tconst, method, match_score, snapshot_date]
+    Returns DataFrame[license_id, title_id, method, match_score, snapshot_date]
     """
     rows: List[Tuple[str, object, str, float]] = []
 
     # defensively ensure required columns exist (helps static analyzers, too)
     for df, name, cols in [
         (base, "base", ["license_id", "title_norm", "release_year"]),
-        (cand, "cand", ["tconst", "title_norm", "releaseYear", "numVotes"]),
+        (cand, "cand", ["title_id", "title_norm", "releaseYear", "numVotes"]),
     ]:
         missing = set(cols) - set(df.columns)
         if missing:
@@ -106,7 +106,7 @@ def resolve_entities(
         best = _score_metadata(block, yr)
 
         if best is not None and best["meta_score"] >= min_similarity_score:
-            mapping_rec = (lic, best["tconst"], "meta_year+region+votes", float(best["meta_score"]))
+            mapping_rec = (lic, best["title_id"], "meta_year+region+votes", float(best["meta_score"]))
         else:
             mapping_rec = (lic, np.nan, "no_match", 0.0)
 
@@ -117,6 +117,6 @@ def resolve_entities(
                 f"Processed {idx + 1} records from base dataframe, running result rows size [{len(rows)}] "
                 f"with {sum(1 for r in rows if r[2] == 'no_match')} records having no matches")
 
-    out = pd.DataFrame(rows, columns=["license_id", "tconst", "method", "match_score"])
+    out = pd.DataFrame(rows, columns=["license_id", "title_id", "method", "match_score"])
     out["snapshot_date"] = pd.Timestamp.utcnow().date().isoformat()
     return out
