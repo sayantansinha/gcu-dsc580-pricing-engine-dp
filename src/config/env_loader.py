@@ -6,7 +6,7 @@ from src.utils.env_utils import getenv
 from src.utils.log_utils import get_logger
 
 # Logger setup
-LOGGER = get_logger("env_utils")
+LOGGER = get_logger("env_loader")
 
 # Load environment file
 load_dotenv()
@@ -19,6 +19,7 @@ class Settings:
     PROCESSED_DIR: str = DATA_DIR + getenv("PROCESSED_DIR", "./data/processed")
     PROFILES_DIR: str = DATA_DIR + getenv("PROFILES_DIR", "./data/profiles")
     FIGURES_DIR: str = DATA_DIR + getenv("FIGURES_DIR", "./data/figures")
+    REPORTS_DIR: str = DATA_DIR + getenv("REPORTS_DIR", "./data/reports")
 
 
 SETTINGS = Settings()

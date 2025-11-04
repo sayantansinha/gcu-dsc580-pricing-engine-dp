@@ -1,9 +1,6 @@
-import os
-import json
 from typing import Dict, List
 import numpy as np
 import pandas as pd
-from src.config import SETTINGS
 
 
 # ---------- Helper for safe datetime handling ----------
@@ -101,12 +98,3 @@ def eda_summary(df: pd.DataFrame) -> Dict:
         "datetime_summary": dt_summary,
         "datetime_trends_monthly": dt_trends,
     }
-
-
-def save_profile(run_id: str, profile: Dict) -> str:
-    """Saves JSON profile to profiles directory."""
-    out = os.path.join(SETTINGS.PROFILES_DIR, f"profile_{run_id}.json")
-    os.makedirs(SETTINGS.PROFILES_DIR, exist_ok=True)
-    with open(out, "w") as f:
-        json.dump(profile, f, indent=2, default=str)
-    return out

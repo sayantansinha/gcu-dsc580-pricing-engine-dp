@@ -11,3 +11,6 @@ streamlit==1.39.0
 pandera==0.20.3
 PyYAML~=6.0.2
 toml~=0.10.2
+statsmodels~=0.14.4
+xgboost
+lightgbm

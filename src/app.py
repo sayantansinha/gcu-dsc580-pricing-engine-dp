@@ -1,33 +1,57 @@
+from __future__ import annotations
+
+import sys
+
 import streamlit as st
 
 from ui.common import inject_css
-from ui.cleaning import render_cleaning_section
-from ui.display_data import render_display_section
-from ui.exploration import render_exploration_section
-from ui.sidebar import render_sidebar_and_handle_ingest
+from ui.menu import get_nav
+from ui.pipeline_hub import render as render_pipeline_hub
+from utils.log_utils import handle_streamlit_exception, get_logger
+
+sys.excepthook = handle_streamlit_exception
+LOGGER = get_logger("app")
 
 st.set_page_config(page_title="Predictive Pricing Engine", layout="wide")
-st.title("Predictive Pricing Engine")
 inject_css()
 
-# ---- Session defaults ----
-defaults = {
-    "df": None, "run_id": None, "raw_path": None, "steps": [], "ingested": False,
-    "_show_viz_panel": False
+# --- session defaults: DO NOT set run_id here ---
+for k, v in {
+    "df": None,
+    "run_id": None,
+    "raw_path": None,
+    "steps": [],
+    "ingested": False,
+    "_show_viz_panel": False,
+}.items():
+    st.session_state.setdefault(k, v)
+
+
+# --- inline blank-slate renderer ---
+def _render_home():
+    st.title("Welcome")
+    st.subheader("Start a pipeline")
+    st.write(
+        "Use **New Pipeline** at the bottom-right of the sidebar to create a fresh run, "
+        "or click an existing run under **Pipeline Runs** to continue."
+    )
+    st.caption(
+        "After creating/selecting a run, the main area will guide you through staging, "
+        "feature building, EDA, cleaning, and modeling."
+    )
+
+
+# --- routes ---
+ROUTES = {
+    "home": _render_home,
+    "pipeline_hub": render_pipeline_hub,
 }
-for k, v in defaults.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
 
-# ---- Sidebar (ingest) ----
-render_sidebar_and_handle_ingest()
 
-# Gate until a dataset is loaded
-if not st.session_state.ingested or st.session_state.df is None:
-    st.info("Use the sidebar to ingest a dataset (Upload or URL).")
-    st.stop()
+def _dispatch(page_key: str):
+    ROUTES.get(page_key, _render_home)()
 
-# ---- Main sections (match your mockups) ----
-render_display_section()
-render_exploration_section()
-render_cleaning_section()
+
+# --- sidebar + route ---
+section, page_key = get_nav()  # sidebar always renders
+_dispatch(page_key)

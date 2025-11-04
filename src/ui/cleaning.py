@@ -1,11 +1,30 @@
+import os
+
+import pandas as pd
 import streamlit as st
 
-from src.preprocessing.cleaning import impute, iqr_filter, winsorize, encode_one_hot, encode_ordinal, scale, \
-    deduplicate, save_processed, write_manifest
+from src.config.env_loader import SETTINGS
+from src.utils.data_io_utils import save_processed, save_profile
+from src.services.source_data.preprocessing.cleaning import impute, iqr_filter, winsorize, encode_one_hot, \
+    encode_ordinal, scale, \
+    deduplicate
 from src.ui.common import end_tab_scroll, begin_tab_scroll, section_panel
 from src.utils.log_utils import get_logger
 
 LOGGER = get_logger("ui_cleaning")
+
+
+def _load_active_feature_master():
+    p = st.session_state.get("last_feature_master_path")
+    if p and os.path.exists(p):
+        return pd.read_parquet(p), os.path.basename(p)
+    proc = SETTINGS.PROCESSED_DIR
+    cand = [f for f in os.listdir(proc) if f.startswith("feature_master_") and f.endswith(".parquet")]
+    if not cand:
+        return None, None
+    cand.sort(reverse=True)
+    p = os.path.join(proc, cand[0])
+    return pd.read_parquet(p), os.path.basename(p)
 
 
 def _tab_impute(df):
@@ -90,18 +109,29 @@ def _tab_scale_dedup(df):
 
 def _save_cleaned_dataset(df):
     st.caption("Save the cleaned dataset and transformation manifest.")
-    base_out = st.text_input("Base name", value="cleaned", key="save_base")
-    if st.button("Save Cleaned Dataset", type="primary"):
-        out_path = save_processed(df, st.session_state.run_id, base_name=base_out)
-        mf_path = write_manifest(st.session_state.run_id, st.session_state.steps)
+    base_out = "feature_master_cleaned"
+    if st.button("Apply & Save Clean Feature Master", type="primary"):
+        run_id = st.session_state.run_id
+        out_path = save_processed(df, f"{base_out}_{run_id}")
+        mf_path = save_profile(
+            {"run_id": run_id, "steps": st.session_state.steps},
+            f"manifest_{run_id}"
+        )
+        st.session_state["last_feature_master_path"] = out_path
+        st.session_state["df"] = df
+
         st.success(f"Saved cleaned dataset: {out_path}")
-        LOGGER.info(f"Saved cleaned dataset: {mf_path}")
         st.success(f"Wrote transformation manifest: {mf_path}")
-        LOGGER.info(f"Wrote transformation manifest: {mf_path}")
 
 
 def render_cleaning_section():
     LOGGER.info("Rendering Cleaning panel....")
+    st.header("Cleaning & Preprocessing")
+    df, label = _load_active_feature_master()
+    if df is None:
+        st.warning("No feature master found. Build it in Data Staging.")
+        return
+    st.caption(f"Using: {label} — shape={df.shape}")
     df = st.session_state.df
 
     with section_panel("Cleaning & Preprocessing", expanded=True):
