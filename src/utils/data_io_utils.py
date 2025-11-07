@@ -140,7 +140,7 @@ def save_reports(html: str, base_dir: str, report_name: str) -> str:
 def save_profile(profile_obj: dict, base_dir: str, name: str) -> str:
     """Save data validation or profiling result to PROFILES_DIR."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    path = os.path.join(SETTINGS.PROFILES_DIR / base_dir, f"{name}_{timestamp}.json")
+    path = os.path.join(Path(SETTINGS.PROFILES_DIR) / base_dir, f"{name}_{timestamp}.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(profile_obj, f, indent=2)
     LOGGER.info(f"Saved profile summary → {path}")

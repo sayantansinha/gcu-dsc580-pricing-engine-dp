@@ -28,7 +28,7 @@ def plot_hist(df: pd.DataFrame, column: str, run_id: str, bins: int = 30) -> str
     ax.set_title(f"Histogram: {column}")
     ax.set_xlabel(column)
     ax.set_ylabel("Count")
-    out = save_figure(fig, _fig_name(run_id, f"hist_{column}"))
+    out = save_figure(fig, run_id, _fig_name(run_id, f"hist_{column}"))
     plt.close(fig)
     return out
 
@@ -38,7 +38,7 @@ def plot_box(df: pd.DataFrame, column: str, run_id: str) -> str:
     fig, ax = plt.subplots()
     ser.plot(kind="box", ax=ax)
     ax.set_title(f"Boxplot: {column}")
-    out = save_figure(fig, _fig_name(run_id, f"box_{column}"))
+    out = save_figure(fig, run_id, _fig_name(run_id, f"box_{column}"))
     plt.close(fig)
     return out
 
@@ -54,7 +54,7 @@ def plot_bar(df: pd.DataFrame, cat: str, val: Optional[str], run_id: str, topn: 
     vc.plot(kind="bar", ax=ax)
     ax.set_title(title)
     ax.set_xlabel(cat)
-    out = save_figure(fig, _fig_name(run_id, f"bar_{cat}{'_' + val if val else ''}"))
+    out = save_figure(fig, run_id, _fig_name(run_id, f"bar_{cat}{'_' + val if val else ''}"))
     plt.close(fig)
     return out
 
@@ -66,7 +66,7 @@ def plot_scatter(df: pd.DataFrame, x: str, y: str, run_id: str) -> str:
     ax.set_title(f"Scatter: {x} vs {y}")
     ax.set_xlabel(x)
     ax.set_ylabel(y)
-    out = save_figure(fig, _fig_name(run_id, f"scatter_{x}_{y}"))
+    out = save_figure(fig, run_id, _fig_name(run_id, f"scatter_{x}_{y}"))
     plt.close(fig)
     return out
 
@@ -79,7 +79,7 @@ def plot_datetime_counts(df: pd.DataFrame, datetime_col: str, run_id: str, freq:
     if ser.empty:
         fig, ax = plt.subplots()
         ax.set_title(f"No data to plot for {datetime_col} ({freq})")
-        out = save_figure(fig, _fig_name(run_id, f"dt_counts_{datetime_col}_{freq}"))
+        out = save_figure(fig, run_id, _fig_name(run_id, f"dt_counts_{datetime_col}_{freq}"))
         plt.close(fig)
         return out
 
@@ -90,7 +90,7 @@ def plot_datetime_counts(df: pd.DataFrame, datetime_col: str, run_id: str, freq:
     ax.set_title(f"{datetime_col} frequency over time ({freq})")
     ax.set_xlabel("Time")
     ax.set_ylabel("Count")
-    out = save_figure(fig, _fig_name(run_id, f"dt_counts_{datetime_col}_{freq}"))
+    out = save_figure(fig, run_id, _fig_name(run_id, f"dt_counts_{datetime_col}_{freq}"))
     plt.close(fig)
     return out
 
@@ -101,7 +101,7 @@ def plot_time_of_day_hist(df: pd.DataFrame, datetime_col: str, run_id: str) -> s
     if ser.empty:
         fig, ax = plt.subplots()
         ax.set_title(f"No hour-of-day data for {datetime_col}")
-        out = save_figure(fig, _fig_name(run_id, f"dt_hour_{datetime_col}"))
+        out = save_figure(fig, run_id, _fig_name(run_id, f"dt_hour_{datetime_col}"))
         plt.close(fig)
         return out
 
@@ -111,7 +111,7 @@ def plot_time_of_day_hist(df: pd.DataFrame, datetime_col: str, run_id: str) -> s
     ax.set_title(f"Distribution by hour: {datetime_col}")
     ax.set_xlabel("Hour of day")
     ax.set_ylabel("Count")
-    out = save_figure(fig, _fig_name(run_id, f"dt_hour_{datetime_col}"))
+    out = save_figure(fig, run_id, _fig_name(run_id, f"dt_hour_{datetime_col}"))
     plt.close(fig)
     return out
 
@@ -123,7 +123,7 @@ def plot_month_box(df: pd.DataFrame, datetime_col: str, value_col: str, run_id: 
     if not valid.any():
         fig, ax = plt.subplots()
         ax.set_title(f"No data for {value_col} by month ({datetime_col})")
-        out = save_figure(fig, _fig_name(run_id, f"dt_month_box_{value_col}_by_{datetime_col}"))
+        out = save_figure(fig, run_id, _fig_name(run_id, f"dt_month_box_{value_col}_by_{datetime_col}"))
         plt.close(fig)
         return out
 
@@ -137,6 +137,6 @@ def plot_month_box(df: pd.DataFrame, datetime_col: str, value_col: str, run_id: 
     ax.set_xlabel("Month")
     ax.set_ylabel(value_col)
     fig.suptitle("")  # remove default matplotlib title
-    out = save_figure(fig, _fig_name(run_id, f"dt_month_box_{value_col}_by_{datetime_col}"))
+    out = save_figure(fig, run_id, _fig_name(run_id, f"dt_month_box_{value_col}_by_{datetime_col}"))
     plt.close(fig)
     return out

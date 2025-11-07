@@ -36,7 +36,7 @@ def _section_header():
         b64 = base64.b64encode(svg_text.encode("utf-8")).decode("ascii")
         st.sidebar.markdown(
             f"<div style='color: var(--text-color); display:flex; align-items:center; gap:.5rem;'>"
-            f"<img src='data:image/svg+xml;base64,{b64}' style='height:28px; width:auto;'/>"
+            f"<img src='data:image/svg+xml;base64,{b64}' />"
             f"<span style='font-size:1.2rem; font-weight:700;'>{APP_NAME}</span>"
             f"</div>",
             unsafe_allow_html=True,

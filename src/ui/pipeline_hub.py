@@ -120,29 +120,29 @@ def render():
     # Re-probe after cleaning
     arts = _artifacts(run_id)
 
-    # 5) Analytical Tools – Model
-    with st.expander("Analytical Tools – Model", expanded=False):
-        if arts["fm_clean"]:
-            with _suppress_child_section_panels():
-                render_models()
-        else:
-            st.info("Save a cleaned Feature Master to enable modeling.")
-
-    # Re-probe after modeling
-    arts = _artifacts(run_id)
-
-    # 6) Visual Tools
-    with st.expander("Visual Tools", expanded=False):
-        if arts["model"]:
-            with _suppress_child_section_panels():
-                render_visuals()
-        else:
-            st.info("Train a model to enable visual tools.")
-
-    # 7) Report Generator
-    with st.expander("Report Generator", expanded=False):
-        if arts["model"]:
-            with _suppress_child_section_panels():
-                render_reports()
-        else:
-            st.info("Train a model to enable the report generator.")
+    # # 5) Analytical Tools – Model
+    # with st.expander("Analytical Tools – Model", expanded=False):
+    #     if arts["fm_clean"]:
+    #         with _suppress_child_section_panels():
+    #             render_models()
+    #     else:
+    #         st.info("Save a cleaned Feature Master to enable modeling.")
+    #
+    # # Re-probe after modeling
+    # arts = _artifacts(run_id)
+    #
+    # # 6) Visual Tools
+    # with st.expander("Visual Tools", expanded=False):
+    #     if arts["model"]:
+    #         with _suppress_child_section_panels():
+    #             render_visuals()
+    #     else:
+    #         st.info("Train a model to enable visual tools.")
+    #
+    # # 7) Report Generator
+    # with st.expander("Report Generator", expanded=False):
+    #     if arts["model"]:
+    #         with _suppress_child_section_panels():
+    #             render_reports()
+    #     else:
+    #         st.info("Train a model to enable the report generator.")
