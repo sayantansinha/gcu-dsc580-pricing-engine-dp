@@ -1,4 +1,6 @@
 import contextlib
+import os
+from pathlib import Path
 
 import streamlit as st
 
@@ -7,75 +9,58 @@ from src.utils.log_utils import get_logger
 LOGGER = get_logger("ui_common")
 
 
-# Inject CSS
-def inject_css():
-    st.markdown("""
-    <style>
-    /* Use theme tokens so dark/light both work */
-    section[data-testid="stSidebar"] * {
-      color: var(--text-color) !important;
-    }
-    /* Expander header text */
-    section[data-testid="stSidebar"] details > summary {
-      color: var(--text-color) !important;
-    }
-    /* Expander body background follows secondary panel */
-    section[data-testid="stSidebar"] .stExpanderContent {
-      background: var(--secondary-background-color) !important;
-    }
-    /* Buttons in sidebar: ensure readable text */
-    section[data-testid="stSidebar"] .stButton > button {
-      color: var(--background-color) !important;           /* text */
-      background: var(--primary-color) !important;         /* bg */
-      border: 1px solid var(--primary-color) !important;
-    }
-    section[data-testid="stSidebar"] .stButton > button:hover {
-      filter: brightness(0.92);
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    # if "_css_injected" not in st.session_state:
-    #     LOGGER.info("Injecting CSS")
-    #     st.markdown("""
-    #     <style>
-    #       /* Expander (collapsible panel) — target multiple Streamlit versions */
-    #       div[data-testid="stExpander"] {
-    #         background: #f7faff;
-    #         border: 1px solid #cfd8eb;
-    #         border-radius: 10px;
-    #         margin: 1rem 0;
-    #         box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-    #       }
-    #       div[data-testid="stExpander"] .st-expander__header,
-    #       details.st-expander > summary {
-    #         background: linear-gradient(180deg,#e4edff 0%, #dbe7ff 100%);
-    #         border-bottom: 1px solid #c7d7f2;
-    #         border-radius: 10px 10px 0 0;
-    #         padding: 0.75rem 1rem !important;
-    #         font-weight: 700;
-    #         font-size: 1.1rem;   /* larger than tab labels */
-    #         color: #143d85;
-    #         letter-spacing: 0.2px;
-    #         list-style: none;
-    #       }
-    #       div[data-testid="stExpander"] .st-expander__icon,
-    #       details.st-expander summary svg {
-    #         color: #143d85 !important;
-    #         transform: scale(1.1);
-    #       }
-    #
-    #       /* Tabs content: fixed height + scroll */
-    #       .tab-scroll {
-    #         max-height: 440px;
-    #         overflow-y: auto;
-    #         padding-right: 8px;
-    #         border: 1px dashed #d9e2f1;
-    #         border-radius: 6px;
-    #         background: #ffffff;
-    #       }
-    #     </style>
-    #     """, unsafe_allow_html=True)
-    #     st.session_state["_css_injected"] = True
+def inject_css_from_file(css_path: str, rerun_on_first_load: bool = True):
+    """
+    Inject CSS globally and guarantee it applies even on the first render.
+
+    Parameters
+    ----------
+    css_path : str
+        Path to the CSS file.
+    rerun_on_first_load : bool, default True
+        Whether to perform a one-time rerun after first CSS injection
+        (ensures proper styling on the very first load).
+    autorefresh : bool, default False
+        If True, watches the CSS file modification time and auto-reruns
+        once when the file changes (useful during development).
+    state_key_prefix : str, default "_menu_css"
+        Prefix for session state keys used internally.
+    """
+    state_key_prefix: str = "_css_injected"
+    injected_key = f"{state_key_prefix}_injected"
+    rerun_key = f"{state_key_prefix}_rerun_done"
+    mtime_key = f"{state_key_prefix}_mtime"
+
+    # If already injected, optionally check for file change
+    # if st.session_state.get(injected_key, False):
+    #     if autorefresh:
+    #         p = Path(css_path).expanduser()
+    #         if p.exists():
+    #             mtime = p.stat().st_mtime
+    #             if st.session_state.get(mtime_key) != mtime:
+    #                 st.session_state[mtime_key] = mtime
+    #                 st.session_state[rerun_key] = True
+    #                 st.rerun()
+    #     return
+
+    # Load and inject CSS
+    p = Path(css_path).expanduser()
+    if not p.exists():
+        st.warning(f"CSS file not found: {p}")
+        st.session_state[injected_key] = True
+        return
+
+    css_text = p.read_text(encoding="utf-8")
+    st.markdown(f"<style>{css_text}</style>", unsafe_allow_html=True)
+
+    # Track mtime for dev autorefresh
+    st.session_state[mtime_key] = os.path.getmtime(p)
+
+    # Mark injected and optionally rerun once
+    st.session_state[injected_key] = True
+    if rerun_on_first_load and not st.session_state.get(rerun_key, False):
+        st.session_state[rerun_key] = True
+        st.rerun()
 
 
 @contextlib.contextmanager

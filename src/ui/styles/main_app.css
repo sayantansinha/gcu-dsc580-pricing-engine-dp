@@ -1,0 +1,148 @@
+/* Logo style */
+.logo-container {
+    color: var(--text-color);
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+}
+
+.app-name-text {
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+/* Use theme tokens so dark/light both work */
+section[data-testid="stSidebar"] * {
+    color: var(--text-color) !important;
+}
+
+/* Expander header text */
+section[data-testid="stSidebar"] details > summary {
+    color: var(--text-color) !important;
+}
+
+/* Expander body background follows secondary panel */
+section[data-testid="stSidebar"] .stExpanderContent {
+    background: var(--secondary-background-color) !important;
+}
+
+/* Buttons in sidebar: ensure readable text */
+section[data-testid="stSidebar"] .stButton > button {
+
+}
+
+section[data-testid="stSidebar"] .stButton > button {
+    width: 100% !important;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start; /* left align */
+    text-align: left;
+    line-height: 1.25;
+    padding: .70rem .85rem;
+    border-radius: .9rem;
+    font-size: 1.0rem;
+    font-weight: 700;
+    box-shadow: none;
+    transition: background .2s, border .2s, box-shadow .2s;
+    background: rgba(67, 84, 230, 0.18);
+    border: 1px solid rgba(67, 84, 230, 0.18);
+    /*color: rgba(255, 255, 255, .96);*/
+    /*color: var(--background-color) !important; */
+    /*background: var(--primary-color) !important; */
+    /*border: 1px solid var(--primary-color) !important;*/
+}
+
+section[data-testid="stSidebar"] .stButton > button:hover {
+    background: rgba(80, 76, 215, 0.47);
+    border-color: rgba(80, 76, 215, 0.47);
+    filter: brightness(0.92);
+}
+
+/* Sidebar container layout */
+/*section[data-testid="stSidebar"] .block-container {*/
+/*    position: relative;*/
+/*    display: flex;*/
+/*    flex-direction: column;*/
+/*    height: 100vh;*/
+/*    padding-bottom: 0;*/
+/*}*/
+
+/* Section title */
+.sidebar-title {
+    font-size: 0.95rem;
+    letter-spacing: .06em;
+    color: rgba(255, 255, 255, .6);
+    text-transform: uppercase;
+    margin: .25rem 0 .25rem 0;
+}
+
+/* Scrollable run list */
+.run-list-container {
+    overflow-y: auto;
+    padding-right: .25rem;
+    margin-right: .25rem;
+    flex: 1 1 auto;
+    min-height: 0; /* flex-friendly scrolling */
+}
+
+.menu-separator {
+    height: 0.25px;
+    background-color: #3333337d;
+    width: 100%;
+    margin: 16px 0;
+}
+/* Visual row grouping (used only for the label lines) */
+/*.menu-row {*/
+/*    display: flex;*/
+/*    flex-direction: column;*/
+/*    gap: .25rem;*/
+/*    padding: .25rem 0;*/
+/*    margin-bottom: .35rem;*/
+/*    border-radius: .9rem;*/
+/*}*/
+
+/*!* Status line *!*/
+/*.menu-status {*/
+/*    font-size: .85rem;*/
+/*    color: rgba(255, 255, 255, .78);*/
+/*    white-space: nowrap;*/
+/*    overflow: hidden;*/
+/*    text-overflow: ellipsis;*/
+/*    padding: .1rem .25rem .45rem .30rem;*/
+/*    margin: 0;*/
+/*}*/
+
+
+/* --------------------------------------------------------------
+   STICKY FOOTER (slim, no heavy gradient) + FOOTER BUTTON OVERRIDE
+   -------------------------------------------------------------- */
+/*.sticky-footer {*/
+/*    position: sticky;*/
+/*    bottom: 0;*/
+/*    width: 100%;*/
+/*    padding: .35rem .25rem .45rem .25rem;*/
+/*    background: transparent;*/
+/*    border-top: 1px solid rgba(255, 255, 255, .08);*/
+/*    backdrop-filter: none;*/
+/*}*/
+
+/*.footer-row {*/
+/*    display: flex;*/
+/*    justify-content: flex-end;*/
+/*    align-items: center;*/
+/*}*/
+
+/*!* Footer button (override the sidebar-wide rules above) *!*/
+/*.sticky-footer .stButton > button {*/
+/*    border-radius: .9rem;*/
+/*    background: rgba(99, 102, 241, .18) !important;*/
+/*    border: 1px solid rgba(99, 102, 241, .45) !important;*/
+/*    color: rgba(255, 255, 255, .98) !important;*/
+/*    padding: .50rem .85rem;*/
+/*    font-size: .92rem;*/
+/*}*/
+
+/*.sticky-footer .stButton > button:hover {*/
+/*    background: rgba(99, 102, 241, .28) !important;*/
+/*    border-color: rgba(99, 102, 241, .60) !important;*/
+/*}*/

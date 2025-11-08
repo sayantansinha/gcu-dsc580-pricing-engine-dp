@@ -3,8 +3,9 @@ from __future__ import annotations
 import sys
 
 import streamlit as st
+from streamlit.runtime.scriptrunner_utils.script_run_context import get_script_run_ctx
 
-from ui.common import inject_css
+from src.ui.common import inject_css_from_file
 from ui.menu import get_nav
 from ui.pipeline_hub import render as render_pipeline_hub
 from utils.log_utils import handle_streamlit_exception, get_logger
@@ -13,7 +14,11 @@ sys.excepthook = handle_streamlit_exception
 LOGGER = get_logger("app")
 
 st.set_page_config(page_title="Predictive Pricing Engine", layout="wide")
-inject_css()
+
+# dev mode: ensure css changes triggers an automatic reload
+ctx = get_script_run_ctx()
+if ctx and ctx.session_id:
+    inject_css_from_file("src/ui/styles/main_app.css")
 
 # --- session defaults: DO NOT set run_id here ---
 for k, v in {
