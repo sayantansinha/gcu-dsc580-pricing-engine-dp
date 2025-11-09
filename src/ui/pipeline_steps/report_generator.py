@@ -1,12 +1,41 @@
 from __future__ import annotations
 import json
+import time
+from pathlib import Path
+from typing import Optional, Final
+
 import streamlit as st
 
+from src.config.env_loader import SETTINGS
 from src.services.analytics.reporting import Section, build_html_report, build_pdf_from_html
 from src.services.analytics.visual_tools import (
     chart_actual_vs_pred, chart_residuals, chart_residuals_qq
 )
 from src.ui.common import show_last_training_badge, load_active_cleaned_feature_master_from_session
+from src.utils.data_io_utils import latest_file_under_directory
+
+REPORT_FILENAME_PREFIX: Final[str] = "report_"
+REPORT_FILENAME_EXT: Final[str] = ".pdf"
+
+
+def _latest_generated_report(run_id: str) -> Optional[Path]:
+    run_proc = Path(SETTINGS.REPORTS_DIR) / run_id
+    return latest_file_under_directory(REPORT_FILENAME_PREFIX, run_proc, suffix=".pdf")
+
+
+def _create_report_filename(report_name: str) -> str:
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    return f"{REPORT_FILENAME_PREFIX}{report_name}_{ts}"
+
+
+def _show_download_button_for_report(report_path: Path) -> None:
+    with open(report_path, "rb") as f:
+        st.download_button(
+            "Download PDF",
+            data=f,
+            file_name=f"{report_path.name}",
+            mime="application/pdf"
+        )
 
 
 def render():
@@ -43,7 +72,7 @@ def render():
         include_data = st.checkbox("Include dataset preview (first 20 rows)", value=True, disabled=df is None)
         include_plots = st.checkbox("Include diagnostic plots", value=True)
         include_perf = st.checkbox("Include model metrics & BP test", value=True)
-        report_name = st.text_input("Report name (no spaces)", value="pricing_engine_report")
+        report_name = st.text_input("Report name (no spaces)", value="pricing_engine")
 
         if st.button("Generate Report", type="primary"):
             sections = []
@@ -76,13 +105,14 @@ def render():
             html_report = build_html_report("Predictive Pricing Engine – Report", meta, sections)
 
             # Save report
-            out_path = build_pdf_from_html(html_report, report_name, run_id)
+            report_filenm = _create_report_filename(report_name)
+            out_path = build_pdf_from_html(html_report, report_filenm, run_id)
 
             st.success(f"Saved report: {out_path}")
-            with open(out_path, "rb") as f:
-                st.download_button(
-                    "Download PDF",
-                    data=f,
-                    file_name=f"{report_name}.pdf",
-                    mime="application/pdf"
-                )
+
+        # Display info for existing report generated
+        latest_generated_report = _latest_generated_report(run_id)
+        if latest_generated_report:
+            st.markdown("---")
+            st.success(f"Report available for download: **{latest_generated_report.name}**")
+            _show_download_button_for_report(latest_generated_report)

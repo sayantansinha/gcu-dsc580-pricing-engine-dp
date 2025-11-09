@@ -14,13 +14,13 @@ from src.utils.data_io_utils import latest_file_under_directory
 from src.utils.log_utils import get_logger
 
 # Orchestrated pages
-from src.ui import source_loader
-from src.ui.display_data import render_display_section
-from src.ui.exploration import render_exploration_section
-from src.ui.cleaning import render_cleaning_section
-from src.ui.analytical_tools import render as render_models
-from src.ui.visual_tools import render as render_visuals
-from src.ui.report_generator import render as render_reports
+from src.ui.pipeline_steps import source_loader, features
+from src.ui.pipeline_steps.display_data import render_display_section
+from src.ui.pipeline_steps.exploration import render_exploration_section
+from src.ui.pipeline_steps.cleaning import render_cleaning_section
+from src.ui.pipeline_steps.analytical_tools import render as render_models
+from src.ui.pipeline_steps.visual_tools import render as render_visuals
+from src.ui.pipeline_steps.report_generator import render as render_reports
 
 LOGGER = get_logger("pipeline_hub")
 
@@ -168,10 +168,13 @@ def render():
             f"| Feature Master (cleaned): **{fm_clean_label}** |  Model: **{model_flag}**"
         )
 
-    # Stage Sources & Build Feature (plain section -> child can use expanders)
-    st.subheader("Stage Sources & Build Feature")
-    source_loader.render()
-    st.divider()
+    # Stage Sources
+    with st.expander("Data Staging", expanded=False):
+        source_loader.render()
+
+    # Build Feature
+    with st.expander("Feature Master Builder", expanded=False):
+        features.render()
 
     # Display Data
     user_msg: str = "Build a Feature Master first."

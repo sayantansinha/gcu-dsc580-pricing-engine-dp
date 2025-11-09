@@ -1,9 +1,10 @@
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, Tuple, List
 
 import numpy as np
 import pandas as pd
-
+import streamlit as st
 from src.config.config_loader import load_config_from_file
 from src.utils.imdb_utils import load_imdb_core, load_imdb_akas, imdb_candidate_universe
 from src.utils.title_utils import normalize_title
@@ -14,6 +15,29 @@ from src.services.source_data.preprocessing.entity_resolution import create_enti
 
 LOGGER = get_logger("feature_builder")
 FEATURE_MASTER_FILENAME = "feature_master_" + datetime.now().strftime("%Y%m%d_%H%M")
+
+
+def _load_df_from_cache(raw_path: str) -> pd.DataFrame:
+    cache_key = f"_raw_preview::{raw_path}"
+    if cache_key in st.session_state:
+        return st.session_state[cache_key]
+    df = load_raw(raw_path)
+    st.session_state[cache_key] = df
+    return df
+
+
+def label_staged_raw_files() -> Tuple[List, Dict[str, pd.DataFrame]]:
+    staged_labels = list(st.session_state["staged_raw"].keys())
+    label_to_df: Dict[str, pd.DataFrame] = {}
+    for lbl in staged_labels:
+        raw_path = st.session_state["staged_raw"][lbl]
+        try:
+            df = _load_df_from_cache(raw_path)
+            label_to_df[lbl] = df
+        except Exception as e:
+            st.error(f"Failed reading RAW file for {lbl}: {e}")
+
+    return staged_labels, label_to_df
 
 
 def _rank_entity_map(emap: pd.DataFrame) -> pd.DataFrame:

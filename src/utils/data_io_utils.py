@@ -141,7 +141,12 @@ def save_profile(profile_obj: dict, base_dir: str, name: str) -> str:
 # -----------------------------
 # Find latest under
 # -----------------------------
-def latest_file_under_directory(prefix: str, under_dir: Path, exclusion: str = None) -> Optional[Path]:
+def latest_file_under_directory(
+        prefix: str,
+        under_dir: Path,
+        suffix: str = ".parquet",
+        exclusion: str = None
+) -> Optional[Path]:
     if not under_dir.exists():
         LOGGER.warning(f"Directory {under_dir.name} doesn't exist")
         return None
@@ -149,7 +154,7 @@ def latest_file_under_directory(prefix: str, under_dir: Path, exclusion: str = N
     files = [p for p in under_dir.iterdir()
              if p.is_file()
              and p.name.startswith(prefix)
-             and p.suffix == ".parquet"
+             and p.suffix == suffix
              and (exclusion is None or exclusion not in p.name)]
 
     if not files:
