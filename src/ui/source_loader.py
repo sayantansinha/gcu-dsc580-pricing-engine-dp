@@ -12,7 +12,8 @@ import streamlit as st
 from src.config.env_loader import SETTINGS
 from src.services.source_data.preprocessing.feature_builder import build_features
 from src.ui.common import get_run_id_from_session_state
-from src.utils.data_io_utils import save_raw, list_raw_files, load_raw, save_processed, save_from_url
+from src.utils.data_io_utils import save_raw, list_raw_files, load_raw, save_processed, save_from_url, \
+    latest_file_under_directory
 from src.utils.log_utils import streamlit_safe, get_logger
 
 LOGGER = get_logger("source_data_stager")
@@ -108,13 +109,7 @@ def _save_feature_master(df: pd.DataFrame, run_id: str) -> str:
 
 def _latest_fm_for_run(run_id: str) -> Optional[Path]:
     run_proc = Path(SETTINGS.PROCESSED_DIR) / run_id
-    if not run_proc.exists():
-        return None
-    cands = list(run_proc.glob("feature_master_clean_*.parquet")) or list(run_proc.glob("feature_master_*.parquet"))
-    if not cands:
-        return None
-    cands.sort(key=lambda p: p.name, reverse=True)
-    return cands[0]
+    return latest_file_under_directory("feature_master_", run_proc, "cleaned")
 
 
 # -------------------------------------------------------------------------------------------------

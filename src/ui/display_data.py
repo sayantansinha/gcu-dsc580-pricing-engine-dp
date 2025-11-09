@@ -1,4 +1,6 @@
-# src/ui/display_data.py
+import os
+from pathlib import Path
+
 import streamlit as st
 
 from src.ui.common import end_tab_scroll, begin_tab_scroll, section_panel
@@ -9,9 +11,11 @@ LOGGER = get_logger("ui_display_data")
 
 
 def render_display_section():
+    st.header("Display Data")
     LOGGER.info("Rendering Display Data panel..")
     df = st.session_state.df
-
+    label = os.path.basename(Path(st.session_state.last_feature_master_path))
+    st.caption(f"Using: {label} — shape={df.shape}")
     with section_panel("Display Data", expanded=True):
         tabs = st.tabs(["Table (Preview)", "Schema"])
 

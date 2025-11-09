@@ -130,7 +130,7 @@ def combine_average(base_out: Dict[str, Any]) -> Dict[str, Any]:
     yv = base_out["y_valid"]
     M = np.column_stack(list(base_out["valid_preds"].values()))
     pred = M.mean(axis=1)
-    return {"kind": "average", "metrics": _metrics(yv, pred)}
+    return {"kind": "average", "pred": pred, "metrics": _metrics(yv, pred)}
 
 
 def combine_weighted_inverse_rmse(base_out: Dict[str, Any]) -> Dict[str, Any]:
@@ -142,5 +142,9 @@ def combine_weighted_inverse_rmse(base_out: Dict[str, Any]) -> Dict[str, Any]:
     inv = 1.0 / (rmses + 1e-8)
     w = inv / inv.sum()
     pred = (M * w).sum(axis=1)
-    return {"kind": "weighted_inverse_rmse", "weights": {n: float(w[i]) for i, n in enumerate(names)},
-            "metrics": _metrics(yv, pred)}
+    return {
+        "kind": "weighted_inverse_rmse",
+        "pred": pred,
+        "weights": {n: float(w[i]) for i, n in enumerate(names)},
+        "metrics": _metrics(yv, pred)
+    }

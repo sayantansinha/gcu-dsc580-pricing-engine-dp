@@ -1,30 +1,14 @@
-import os
-
 import pandas as pd
 import streamlit as st
 from matplotlib import pyplot as plt
 from sklearn.preprocessing import StandardScaler, RobustScaler
 
-from src.config.env_loader import SETTINGS
 from src.services.source_data.preprocessing.cleaning import impute
-from src.ui.common import end_tab_scroll, begin_tab_scroll, section_panel
+from src.ui.common import end_tab_scroll, begin_tab_scroll, section_panel, load_active_feature_master_from_session
 from src.utils.data_io_utils import save_processed, save_profile
 from src.utils.log_utils import get_logger
 
 LOGGER = get_logger("ui_cleaning")
-
-
-def _load_active_feature_master():
-    p = st.session_state.get("last_feature_master_path")
-    if p and os.path.exists(p):
-        return pd.read_parquet(p), os.path.basename(p)
-    proc = SETTINGS.PROCESSED_DIR
-    cand = [f for f in os.listdir(proc) if f.startswith("feature_master_") and f.endswith(".parquet")]
-    if not cand:
-        return None, None
-    cand.sort(reverse=True)
-    p = os.path.join(proc, cand[0])
-    return pd.read_parquet(p), os.path.basename(p)
 
 
 def _num_summary(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
@@ -73,7 +57,8 @@ def _log_step(step_name: str, payload: dict):
     st.session_state.steps.append({step_name: payload})
 
 
-def _tab_impute(df):
+def _tab_impute():
+    df = st.session_state.df.copy()
     num_cols = df.select_dtypes(include="number").columns.tolist()
 
     with st.form("impute_form"):
@@ -85,15 +70,14 @@ def _tab_impute(df):
 
     if submitted:
         # --- BEFORE
-        df_before = st.session_state.df.copy()
         cols_to_check = cols_sel or num_cols
-        before = _summary_for_imputation(df_before, cols_to_check)
+        before = _summary_for_imputation(df, cols_to_check)
 
         # --- APPLY
-        st.session_state.df = impute(st.session_state.df, strategy=strat, columns=(cols_sel or None))
+        st.session_state.cleaned_df = impute(df, strategy=strat, columns=(cols_sel or None))
 
         # --- AFTER
-        df_after = st.session_state.df
+        df_after = st.session_state.cleaned_df
         after = _summary_for_imputation(df_after, cols_to_check)
 
         # --- COMPARE
@@ -156,7 +140,8 @@ def _tab_impute(df):
         _log_step("post_impute_check", report)
 
 
-def _tab_outliers(df):
+def _tab_outliers():
+    df = st.session_state.cleaned_df.copy()
     num_cols = df.select_dtypes(include="number").columns.tolist()
     st.subheader("Outlier Handling")
 
@@ -167,33 +152,32 @@ def _tab_outliers(df):
 
     if submitted:
         cols = cols_sel or num_cols
-        before = _num_summary(st.session_state.df, cols)
+        before = _num_summary(df, cols)
 
-        df_work = st.session_state.df.copy()
         thresholds = {}
         counts = {}
 
         for c in cols:
-            q1 = df_work[c].quantile(0.25)
-            q3 = df_work[c].quantile(0.75)
+            q1 = df[c].quantile(0.25)
+            q3 = df[c].quantile(0.75)
             iqr = q3 - q1
             lo = q1 - iqr_k * iqr
             hi = q3 + iqr_k * iqr
             thresholds[c] = {"low": float(lo), "high": float(hi)}
 
             if method == "IQR Filter":
-                before_n = len(df_work)
-                df_work = df_work[(df_work[c] >= lo) & (df_work[c] <= hi)]
-                counts[c] = {"removed": int(before_n - len(df_work))}
+                before_n = len(df)
+                df_work = df[(df[c] >= lo) & (df[c] <= hi)]
+                counts[c] = {"removed": int(before_n - len(df))}
             else:
                 # Winsorize (clip)
-                s_before = df_work[c].copy()
-                df_work[c] = df_work[c].clip(lower=lo, upper=hi)
-                changed = (s_before != df_work[c]).sum()
+                s_before = df[c].copy()
+                df[c] = df[c].clip(lower=lo, upper=hi)
+                changed = (s_before != df[c]).sum()
                 counts[c] = {"clipped": int(changed)}
 
-        st.session_state.df = df_work
-        after = _num_summary(st.session_state.df, cols)
+        st.session_state.cleaned_df = df
+        after = _num_summary(df, cols)
 
         st.success("Outlier handling applied.")
         with st.container(border=True):
@@ -204,7 +188,7 @@ def _tab_outliers(df):
 
             st.caption("Boxplot (post)")
             fig, ax = plt.subplots()
-            st.session_state.df[cols].plot(kind="box", ax=ax, vert=False)
+            df[cols].plot(kind="box", ax=ax, vert=False)
             st.pyplot(fig, clear_figure=True)
 
         _log_step("outliers", {
@@ -216,7 +200,8 @@ def _tab_outliers(df):
         })
 
 
-def _tab_encoding(df):
+def _tab_encoding():
+    df = st.session_state.cleaned_df.copy()
     st.subheader("Categorical Encoding")
     cat_cols = df.select_dtypes(exclude="number").columns.tolist()
     cols_sel = st.multiselect("Categorical columns", cat_cols, default=cat_cols)
@@ -226,40 +211,39 @@ def _tab_encoding(df):
     if st.button("Apply encoding"):
         before_card = {c: int(df[c].nunique(dropna=False)) for c in cols_sel}
 
-        work = st.session_state.df.copy()
         # Standardize names
         for c in cols_sel:
-            work[c] = _normalize_series(work[c])
+            df[c] = _normalize_series(df[c])
 
         # Show normalization diffs
         with st.container(border=True):
             st.markdown("Normalization preview")
             prev = []
             for c in cols_sel:
-                sample = (st.session_state.df[c].astype("string")
-                          .head(50).to_frame(c).assign(NORMALIZED=work[c].head(50)))
+                sample = (st.session_state.cleaned_df[c].astype("string")
+                          .head(50).to_frame(c).assign(NORMALIZED=df[c].head(50)))
                 prev.append(sample)
                 st.write(f"Column: **{c}**")
                 st.dataframe(sample, use_container_width=True)
             _ = prev  # just to avoid linter complaints
 
         if method == "One-Hot":
-            work = pd.get_dummies(work, columns=cols_sel, drop_first=False, dtype=int)
-            enc_info = {"created_columns": [c for c in work.columns if any(c.startswith(x + "_") for x in cols_sel)]}
+            df = pd.get_dummies(df, columns=cols_sel, drop_first=False, dtype=int)
+            enc_info = {"created_columns": [c for c in df.columns if any(c.startswith(x + "_") for x in cols_sel)]}
         else:
             # Target encoding against 'price' (adjust if your target differs)
             enc_info = {"mapping": {}}
             for c in cols_sel:
-                m = work.groupby(c)["price"].mean().to_dict()
-                work[f"{c}__target"] = work[c].map(m)
+                m = df.groupby(c)["price"].mean().to_dict()
+                df[f"{c}__target"] = df[c].map(m)
                 enc_info["mapping"][c] = {k: float(v) for k, v in m.items()}
 
         # Optionally drop originals
         if not keep_original and method != "One-Hot":
-            work.drop(columns=cols_sel, inplace=True)
+            df = df.drop(columns=cols_sel)
 
-        st.session_state.df = work
-        after_card = {c: (int(work[c].nunique()) if c in work.columns else -1) for c in cols_sel}
+        after_card = {c: (int(df[c].nunique()) if c in df.columns else -1) for c in cols_sel}
+        st.session_state.cleaned_df = df
 
         # Visibility: cardinality + leakage warning
         with st.container(border=True):
@@ -285,14 +269,15 @@ def _tab_encoding(df):
         st.success("Encoding applied.")
 
 
-def _tab_scaling(df):
+def _tab_scaling():
+    df = st.session_state.cleaned_df.copy()
     st.subheader("Scaling")
     num_cols = df.select_dtypes(include="number").columns.tolist()
     cols_sel = st.multiselect("Numeric columns to scale", num_cols)
     scaler_name = st.selectbox("Scaler", ["StandardScaler", "RobustScaler"])
     if st.button("Apply scaling"):
         cols = cols_sel or num_cols
-        before = _num_summary(st.session_state.df, cols)
+        before = _num_summary(df, cols)
 
         X = st.session_state.df[cols].values
         scaler = StandardScaler() if scaler_name == "StandardScaler" else RobustScaler()
@@ -300,7 +285,7 @@ def _tab_scaling(df):
         for i, c in enumerate(cols):
             st.session_state.df[c] = Xs[:, i]
 
-        after = _num_summary(st.session_state.df, cols)
+        after = _num_summary(df, cols)
 
         with st.container(border=True):
             st.markdown("Post-scaling summary")
@@ -313,9 +298,11 @@ def _tab_scaling(df):
             if cols:
                 c0 = cols[0]
                 fig, ax = plt.subplots()
-                ax.scatter(st.session_state.df.index, st.session_state.df[c0])
+                ax.scatter(df.index, df[c0])
                 ax.set_title(f"Scaled values: {c0}")
                 st.pyplot(fig, clear_figure=True)
+
+        st.session_state.cleaned_df = df
 
         _log_step("scaling", {
             "scaler": scaler_name,
@@ -331,9 +318,9 @@ def _tab_dedup():
     tie_break = st.selectbox("Retain rule", ["Most complete", "Latest window_end"])
 
     if st.button("Apply deduplication"):
-        before_n = len(st.session_state.df)
+        before_n = len(st.session_state.cleaned_df)
 
-        work = st.session_state.df.copy()
+        work = st.session_state.cleaned_df.copy()
         # mark duplicates by key
         dup_mask = work.duplicated(subset=[key], keep=False)
         dups = work[dup_mask]
@@ -355,8 +342,8 @@ def _tab_dedup():
 
             work = work.drop(index=dropped_idx)
 
-        st.session_state.df = work
-        after_n = len(st.session_state.df)
+        st.session_state.cleaned_df = work
+        after_n = len(st.session_state.cleaned_df)
 
         with st.container(border=True):
             st.markdown("Deduplication report")
@@ -411,13 +398,13 @@ def _save_cleaned_dataset():
     cleaned_out_name = "feature_master_cleaned"
     if st.button("Apply & Save Clean Feature Master", type="primary"):
         run_id = st.session_state.run_id
-        out_path = save_processed(st.session_state.df, run_id, f"{cleaned_out_name}_{run_id}")
+        out_path = save_processed(st.session_state.cleaned_df, run_id, f"{cleaned_out_name}_{run_id}")
         mf_path = save_profile(
             {"run_id": run_id, "steps": st.session_state.steps},
             run_id,
             f"manifest_{run_id}"
         )
-        st.session_state["last_feature_master_path"] = out_path
+        st.session_state["last_cleaned_feature_master_path"] = out_path
 
         st.success(f"Saved cleaned dataset: {out_path}")
         st.success(f"Wrote transformation manifest: {mf_path}")
@@ -425,31 +412,34 @@ def _save_cleaned_dataset():
 
 def render_cleaning_section():
     LOGGER.info("Rendering Cleaning panel....")
-    st.header("Cleaning & Preprocessing")
-    df, label = _load_active_feature_master()
+    st.header("Preprocessing (and Cleaning)")
+    df, label = load_active_feature_master_from_session()
     if df is None:
         st.warning("No feature master found. Build it in Data Staging.")
         return
     st.caption(f"Using: {label} — shape={df.shape}")
-    df = st.session_state.df
 
-    with section_panel("Cleaning & Preprocessing", expanded=True):
+    # Set defaults
+    st.session_state.setdefault("cleaned_df", df.copy())
+    st.session_state.setdefault("steps", [])
+
+    with section_panel("Preprocessing (and Cleaning)", expanded=True):
         tabs = st.tabs(["Impute", "Outliers", "Encoding", "Scaling", "Deduplication", "Save Cleaned Dataset"])
         with tabs[0]:
             begin_tab_scroll()
-            _tab_impute(df)
+            _tab_impute()
             end_tab_scroll()
         with tabs[1]:
             begin_tab_scroll()
-            _tab_outliers(df)
+            _tab_outliers()
             end_tab_scroll()
         with tabs[2]:
             begin_tab_scroll()
-            _tab_encoding(df)
+            _tab_encoding()
             end_tab_scroll()
         with tabs[3]:
             begin_tab_scroll()
-            _tab_scaling(df)
+            _tab_scaling()
             end_tab_scroll()
         with tabs[4]:
             begin_tab_scroll()

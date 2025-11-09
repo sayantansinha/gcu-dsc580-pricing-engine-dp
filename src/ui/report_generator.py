@@ -1,47 +1,45 @@
 from __future__ import annotations
-import os, json
-import pandas as pd
+import json
 import streamlit as st
 
-from src.config.env_loader import SETTINGS
-from src.services.analytics.reporting import Section, build_html_report, save_html_report
+from src.services.analytics.reporting import Section, build_html_report, build_pdf_from_html
 from src.services.analytics.visual_tools import (
     chart_actual_vs_pred, chart_residuals, chart_residuals_qq
 )
-
-
-def _load_feature_master_for_current_run() -> tuple[pd.DataFrame | None, str | None]:
-    run_dir = st.session_state.get("last_model_run_dir")
-    if not run_dir:
-        return None, None
-    path = os.path.join(run_dir, "feature_master.parquet")
-    if not os.path.exists(path):
-        return None, None
-    return pd.read_parquet(path), path
-
-
-def _run_badge():
-    run_dir = st.session_state.get("last_model_run_dir")
-    if run_dir:
-        rel = os.path.relpath(run_dir, SETTINGS.PROCESSED_DIR)
-        st.caption(f"Using run: `{rel}`")
+from src.ui.common import show_last_training_badge, load_active_cleaned_feature_master_from_session
 
 
 def render():
     st.header("Report Generator")
-
+    run_id = st.session_state.run_id
     # Model artifacts (from last training)
     res = st.session_state.get("last_model")
     if not res:
         st.info("Train a model first in **Analytics Tools → Analytical Tools – Model**.")
         return
 
-    _run_badge()
+    show_last_training_badge()
 
-    # Try loading the feature master for this run (optional data preview)
-    df, fm_path = _load_feature_master_for_current_run()
+    # Loading the cleaned feature master for this run
+    df, fm_clean = load_active_cleaned_feature_master_from_session()
 
-    with st.expander("Report Selection Options....", expanded=True):
+    # Fetch all relevant data
+    # Get y_true / y_pred
+    y_true = (res or {}).get("y_true")
+    y_pred = (res or {}).get("y_pred")
+
+    # Trained models:
+    trained_models = (res or {}).get("trained_models")
+
+    # Performance blocks from what you already save
+    perf_payload = {
+        "per_model_metrics": (res or {}).get("base", {}).get("per_model_metrics"),
+        "ensemble_avg_metrics": (res or {}).get("ensemble_avg", {}).get("metrics"),
+        "ensemble_wgt_metrics": (res or {}).get("ensemble_wgt", {}).get("metrics"),
+    }
+
+    with st.container(border=True):
+        st.markdown("Report Selection Options....")
         include_data = st.checkbox("Include dataset preview (first 20 rows)", value=True, disabled=df is None)
         include_plots = st.checkbox("Include diagnostic plots", value=True)
         include_perf = st.checkbox("Include model metrics & BP test", value=True)
@@ -50,9 +48,9 @@ def render():
         if st.button("Generate Report", type="primary"):
             sections = []
             meta = {
-                "model": res["model_name"],
+                "model": ', '.join(trained_models),
                 "rows": int(len(df)) if df is not None else None,
-                "feature_master_path": fm_path,
+                "feature_master_path": fm_clean,
                 "run_dir": st.session_state.get("last_model_run_dir"),
             }
 
@@ -61,23 +59,30 @@ def render():
 
             if include_plots:
                 imgs = [
-                    ("Actual vs Predicted", chart_actual_vs_pred(res["y_true"], res["y_pred"])),
-                    ("Residuals vs Predicted", chart_residuals(res["y_true"], res["y_pred"])),
-                    ("Residuals Q–Q", chart_residuals_qq(res["y_true"], res["y_pred"]))
+                    ("Actual vs Predicted", chart_actual_vs_pred(y_true, y_pred)),
+                    ("Residuals vs Predicted", chart_residuals(y_true, y_pred)),
+                    ("Residuals Q–Q", chart_residuals_qq(y_true, y_pred))
                 ]
                 html = "".join([f"<h3>{t}</h3><img src='{src}'/>" for t, src in imgs])
                 sections.append(Section("Diagnostics", html))
 
             if include_perf:
                 perf_html = (
-                    f"<h3>Performance</h3><pre>{json.dumps(res['metrics'], indent=2)}</pre>"
-                    f"<h3>Breusch–Pagan</h3><pre>{json.dumps(res['bp'], indent=2)}</pre>"
+                    f"<h3>Performance</h3><pre>{json.dumps(perf_payload, indent=2)}</pre>"
+                    # f"<h3>Breusch–Pagan</h3><pre>{json.dumps(res['bp'], indent=2)}</pre>"
                 )
                 sections.append(Section("Performance & Diagnostics", perf_html))
 
-            html = build_html_report("Predictive Pricing Engine – Local Report", meta, sections)
-            out_path = save_html_report(html, report_name)
+            html_report = build_html_report("Predictive Pricing Engine – Report", meta, sections)
+
+            # Save report
+            out_path = build_pdf_from_html(html_report, report_name, run_id)
 
             st.success(f"Saved report: {out_path}")
             with open(out_path, "rb") as f:
-                st.download_button("Download report", data=f, file_name=f"{report_name}.html")
+                st.download_button(
+                    "Download PDF",
+                    data=f,
+                    file_name=f"{report_name}.pdf",
+                    mime="application/pdf"
+                )

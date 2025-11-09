@@ -1,8 +1,10 @@
-# src/ui/analytical_tools.py
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 
+import joblib
 import pandas as pd
 import streamlit as st
 
@@ -10,38 +12,18 @@ from src.config.env_loader import SETTINGS
 from src.services.analytics.modeling import (
     train_models_parallel,
     combine_average,
-    combine_weighted_inverse_rmse,
+    combine_weighted_inverse_rmse, AVAILABLE_MODELS,
 )
-from src.utils.log_utils import streamlit_safe
+from src.ui.common import show_last_training_badge, store_last_model_info_in_session
+from src.utils.log_utils import streamlit_safe, get_logger
+
+LOGGER = get_logger("ui_analytical_tools")
 
 
-# ----------------------------------------------------------------------
-# Helper: find all feature master files
-# ----------------------------------------------------------------------
-def _find_feature_masters() -> list[tuple[str, str]]:
-    """List all feature_master_*.parquet files under PROCESSED_DIR."""
-    processed = SETTINGS.PROCESSED_DIR
-    if not os.path.isdir(processed):
-        return []
-    items: list[tuple[str, str]] = []
-    for fname in sorted(os.listdir(processed), reverse=True):
-        if fname.startswith("feature_master_") and fname.endswith(".parquet"):
-            full_path = os.path.join(processed, fname)
-            items.append((fname, full_path))
-    return items
-
-
-def _load_feature_master(path: str) -> pd.DataFrame | None:
-    """Safely load the chosen feature master file."""
-    try:
-        df = pd.read_parquet(path)
-        if df.empty:
-            st.warning(f"{os.path.basename(path)} is empty.")
-            return None
-        return df
-    except Exception as e:
-        st.error(f"Failed to read {path}: {e}")
-        return None
+def _compare_model_selection_from_last_run(selected_models: list[str]):
+    last = st.session_state.get("last_model")["trained_models"]
+    if set(map(str, selected_models)) != set(map(str, last)):
+        st.info("Current model selection differs from the last trained set.")
 
 
 def _numeric_columns(df: pd.DataFrame) -> list[str]:
@@ -77,12 +59,71 @@ def _model_param_ui(algo: str) -> dict:
 
 def _multimodel_param_ui(selected_models: list[str]) -> dict[str, dict]:
     blocks: dict[str, dict] = {}
-    with st.expander("Hyperparameters (per selected model)", expanded=False):
+    with st.container(border=True):
+        st.markdown("Hyperparameters (per selected model)")
         for m in selected_models:
             st.markdown(f"**{m}**")
             blocks[m] = _model_param_ui(m)
             st.markdown("---")
     return blocks
+
+
+def _save_model_outputs(
+        base_out: dict,
+        comb_avg: dict,
+        comb_wgt_inv_rmse: dict,
+        params_map: dict,
+        y_true,
+        y_pred,
+        pred_src,
+        out_dir: Path
+):
+    # Save per-model metrics & ensemble summaries
+    pd.DataFrame(base_out["per_model_metrics"]).to_csv(out_dir / "per_model_metrics.csv", index=False)
+    with open(out_dir / "ensemble_avg.json", "w") as f:
+        # Remove 'pred' numpy array before saving to allow saving as json
+        comb_avg_to_save = {k: v for k, v in comb_avg.items() if k != "pred"}
+        json.dump(comb_avg_to_save, f, indent=2)
+    with open(out_dir / "ensemble_weighted.json", "w") as f:
+        # Remove 'pred' numpy array before saving to allow saving as json
+        comb_wgt_inv_rmse_to_save = {k: v for k, v in comb_wgt_inv_rmse.items() if k != "pred"}
+        json.dump(comb_wgt_inv_rmse_to_save, f, indent=2)
+
+    # Save predictions for diagnostics
+    pd.DataFrame(
+        {
+            "y_true": y_true,
+            "y_pred": y_pred,
+            "pred_source": pred_src
+        }
+    ).to_csv(out_dir / "predictions.csv", index=False)
+
+    # Hyperparams used
+    with open(out_dir / "params_map.json", "w") as f:
+        json.dump(params_map, f, indent=2)
+
+    # Fitted estimators
+    try:
+        if "models" in base_out and isinstance(base_out["models"], dict):
+            for name, est in base_out["models"].items():
+                joblib.dump(est, out_dir / f"{name}.joblib")
+    except Exception:
+        LOGGER.warning(f"Could not save fitted estimators to out_dir {out_dir}")
+
+
+def _choose_display_pred(base_out, wgt, avg):
+    # prefer weighted ensemble if available
+    if isinstance(wgt, dict) and wgt.get("pred") is not None:
+        return wgt["pred"], "weighted_ensemble"
+
+    # else fall back to simple average
+    if isinstance(avg, dict) and avg.get("pred") is not None:
+        return avg["pred"], "average_ensemble"
+
+    # else pick the single best model by RMSE
+    metrics = base_out["per_model_metrics"]  # list of dicts with keys: model, RMSE, etc.
+    best = min(metrics, key=lambda r: r["RMSE"])["model"]
+    return base_out["valid_preds"][best], f"best_model:{best}"
 
 
 # ----------------------------------------------------------------------
@@ -91,34 +132,16 @@ def _multimodel_param_ui(selected_models: list[str]) -> dict[str, dict]:
 @streamlit_safe
 def render():
     st.header("Analytical Tools - Model")
+    show_last_training_badge()
 
-    # Discover feature masters
-    fm_files = _find_feature_masters()
-    if not fm_files:
-        st.warning(
-            "No feature master files found in the processed directory.\n\n"
-            "Go to **Build Feature Master** to create one (named like `feature_master_<suffix>.parquet`)."
-        )
-        return
-
-    # Default selection from last run (if any)
-    default_file = None
-    if "last_model_run_dir" in st.session_state:
-        path = st.session_state["last_model_run_dir"]
-        fname = os.path.basename(path)
-        for name, _full in fm_files:
-            if name == fname:
-                default_file = name
-                break
-
-    labels = [name for name, _ in fm_files]
-    default_idx = labels.index(default_file) if default_file in labels else 0
-    selected_label = st.selectbox("Select Feature Master File", labels, index=default_idx)
-    selected_path = dict(fm_files)[selected_label]
-
-    df = _load_feature_master(selected_path)
+    run_id = st.session_state.run_id
+    df = st.session_state.cleaned_df
     if df is None:
+        LOGGER.warning("No cleaned feature master available in session")
         return
+
+    label = os.path.basename(Path(st.session_state.last_cleaned_feature_master_path))
+    st.caption(f"Using: {label} — shape={df.shape}")
 
     num_cols = _numeric_columns(df)
     if not num_cols:
@@ -126,7 +149,12 @@ def render():
         return
 
     # Target + features
-    target = st.selectbox("Target (dependent variable)", num_cols)
+    default_target = "price"
+    target = st.selectbox(
+        "Target (dependent variable)",
+        num_cols,
+        index=num_cols.index(default_target) if default_target in num_cols else 0
+    )
     features = st.multiselect(
         "Feature columns (independent variables)",
         [c for c in df.columns if c != target],
@@ -137,10 +165,11 @@ def render():
         return
 
     # Allowed models only (from your excerpt)
-    allowed = ["LinearRegression", "Ridge", "Lasso", "XGBoost", "LightGBM", "MLP"]
-    with st.expander("Model Selection", expanded=True):
+    allowed = AVAILABLE_MODELS.keys()
+    with st.container(border=True):
+        st.markdown("Model Selection")
         selected_models = st.multiselect(
-            "Select models to train (runs in parallel; ensembles computed automatically)",
+            "Select models to train",
             allowed,
             default=["LinearRegression", "LightGBM", "MLP"],
         )
@@ -148,24 +177,30 @@ def render():
         st.info("Select at least one model.")
         return
 
+    _compare_model_selection_from_last_run(selected_models)
+
     params_map = _multimodel_param_ui(selected_models)
 
     # Single unified action: Train & Evaluate (parallel only)
     if st.button("Train & Evaluate", type="primary"):
-        with st.spinner(f"Training in parallel on {selected_label}..."):
-            base_out = train_models_parallel(
+        with st.spinner(f"Training in parallel on {label}..."):
+            base_train_out = train_models_parallel(
                 df[features + [target]],
                 target,
                 selected_models,
-                params_map,
+                params_map
             )
 
         st.subheader("Per-model Validation Metrics")
-        st.dataframe(pd.DataFrame(base_out["per_model_metrics"]).set_index("model"))
+        st.dataframe(pd.DataFrame(base_train_out["per_model_metrics"]).set_index("model"))
 
         # Ensembles (computed automatically behind the scenes)
-        avg = combine_average(base_out)
-        wgt = combine_weighted_inverse_rmse(base_out)
+        avg = combine_average(base_train_out)
+        wgt = combine_weighted_inverse_rmse(base_train_out)
+
+        # Result predictions (prefer combined weighted or fallback to average)
+        y_true = base_train_out["y_valid"]
+        y_pred, pred_src = _choose_display_pred(base_train_out, wgt, avg)
 
         st.subheader("Ensemble (automatic)")
         st.markdown("**Simple Average**")
@@ -174,6 +209,27 @@ def render():
         st.json(wgt["metrics"])
 
         # Persist context
-        st.session_state["last_model"] = {"base": base_out, "ensemble_avg": avg, "ensemble_wgt": wgt}
-        st.session_state["last_model_run_dir"] = selected_path
+        run_dir = Path(SETTINGS.MODELS_DIR) / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        _save_model_outputs(
+            base_train_out,
+            avg, wgt,
+            params_map,
+            y_true,
+            y_pred,
+            pred_src,
+            run_dir
+        )
+
+        store_last_model_info_in_session(
+            base_train_out,
+            avg,
+            wgt,
+            y_true,
+            y_pred,
+            pred_src,
+            params_map,
+            selected_models
+        )
+        st.session_state["last_model_run_dir"] = run_dir
         st.success("Training and evaluation completed.")

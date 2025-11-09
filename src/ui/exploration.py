@@ -8,25 +8,10 @@ from src.services.source_data.analytics.eda import eda_summary
 from src.services.source_data.analytics.visualization import plot_hist, plot_box, plot_bar, plot_scatter, \
     plot_datetime_counts, \
     plot_time_of_day_hist, plot_month_box
-from src.ui.common import end_tab_scroll, begin_tab_scroll, section_panel
+from src.ui.common import end_tab_scroll, begin_tab_scroll, section_panel, load_active_feature_master_from_session
 from src.utils.log_utils import get_logger
 
 LOGGER = get_logger("ui_exploration")
-
-
-def _load_active_feature_master():
-    # prefer session path
-    p = st.session_state.get("last_feature_master_path")
-    if p and os.path.exists(p):
-        return pd.read_parquet(p), os.path.basename(p)
-    # else find newest feature_master_*.parquet
-    proc = SETTINGS.PROCESSED_DIR
-    cand = [f for f in os.listdir(proc) if f.startswith("feature_master_") and f.endswith(".parquet")]
-    if not cand:
-        return None, None
-    cand.sort(reverse=True)
-    p = os.path.join(proc, cand[0])
-    return pd.read_parquet(p), os.path.basename(p)
 
 
 def _viz_numeric_cat(df, run_id):
@@ -103,7 +88,7 @@ def render_exploration_section():
     run_id = st.session_state.run_id
     LOGGER.info(f"Rendering Exploration (EDA) panel.....run_id: {run_id}")
     st.header("Exploration (EDA)")
-    df, label = _load_active_feature_master()
+    df, label = load_active_feature_master_from_session()
     if df is None:
         st.warning("No feature master found. Build it in Data Staging.")
         return
