@@ -116,6 +116,7 @@ def render():
                     st.error(f"Failed to load URL: {e}")
 
     if not st.session_state["staged_raw"]:
+        st.session_state["staged_files_count"] = 0
         st.info("No staged sources yet. Upload/add URLs or pick from RAW.")
     else:
         # Data Insights for each staged RAW file

@@ -28,6 +28,7 @@ def _load_df_from_cache(raw_path: str) -> pd.DataFrame:
 
 def label_staged_raw_files() -> Tuple[List, Dict[str, pd.DataFrame]]:
     staged_labels = list(st.session_state["staged_raw"].keys())
+    st.session_state["staged_files_count"] = len(staged_labels)
     label_to_df: Dict[str, pd.DataFrame] = {}
     for lbl in staged_labels:
         raw_path = st.session_state["staged_raw"][lbl]

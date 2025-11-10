@@ -60,7 +60,7 @@ def _save_feature_master(df: pd.DataFrame, run_id: str) -> str:
 
 def _latest_fm_for_run(run_id: str) -> Optional[Path]:
     run_proc = Path(SETTINGS.PROCESSED_DIR) / run_id
-    return latest_file_under_directory("feature_master_", run_proc, "cleaned")
+    return latest_file_under_directory("feature_master_", run_proc, exclusion="cleaned")
 
 
 @streamlit_safe
@@ -69,6 +69,7 @@ def render():
     st.caption("File Mapping for Feature Master")
 
     if not st.session_state["staged_raw"]:
+        st.session_state["last_feature_master_path"] = None
         st.info("No staged sources yet. Load data files first.")
     else:
         staged_labels, label_to_df = label_staged_raw_files()
@@ -118,7 +119,11 @@ def render():
 
         # Display info for current feature master
         latest_fm = _latest_fm_for_run(run_id)
+        st.markdown("---")
         if latest_fm:
-            st.markdown("---")
+            st.session_state["last_feature_master_path"] = latest_fm
             st.success(f"Current Feature Master being used for subsequent steps: **{latest_fm.name}**")
             st.caption("Rebuild from staged RAW above if you want to replace it.")
+        else:
+            st.session_state["last_feature_master_path"] = None
+            st.info("No Feature Master found, create one using the button above")

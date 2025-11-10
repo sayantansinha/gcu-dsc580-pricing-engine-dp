@@ -408,6 +408,7 @@ def _save_cleaned_dataset():
 
         st.success(f"Saved cleaned dataset: {out_path}")
         st.success(f"Wrote transformation manifest: {mf_path}")
+        st.session_state["preprocessing_performed"] = True
 
 
 def render_cleaning_section():

@@ -110,6 +110,8 @@ def _save_model_outputs(
     except Exception:
         LOGGER.warning(f"Could not save fitted estimators to out_dir {out_dir}")
 
+    st.session_state["model_trained"] = True
+
 
 def _choose_display_pred(base_out, wgt, avg):
     # prefer weighted ensemble if available

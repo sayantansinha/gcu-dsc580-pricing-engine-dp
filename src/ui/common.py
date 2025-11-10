@@ -107,9 +107,9 @@ def load_active_feature_master_from_session():
 def load_active_cleaned_feature_master_from_session():
     p = st.session_state.get("last_feature_master_path")
 
-    if not p and not os.path.exists(p):
+    if not p or not os.path.exists(p):
         LOGGER.warning("No active feature master found in session")
-        return None
+        return None, None
 
     return pd.read_parquet(p), os.path.basename(p)
 
