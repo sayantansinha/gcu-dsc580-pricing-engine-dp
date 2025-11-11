@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import ast
 import json
 import os
+from copy import deepcopy
 from pathlib import Path
+from typing import Final, Dict
 
 import joblib
 import pandas as pd
@@ -18,6 +21,16 @@ from src.ui.common import show_last_training_badge, store_last_model_info_in_ses
 from src.utils.log_utils import streamlit_safe, get_logger
 
 LOGGER = get_logger("ui_analytical_tools")
+PRED_SRC_DISP_NAMES: Final[Dict[str, str]] = {
+    "weighted_ensemble": "Weighted Ensemble",
+    "average_ensemble": "Simple Average Ensemble",
+}
+METRIC_NAMES: Final[Dict[str, str]] = {
+    "RMSE": "Root Mean Squared Error",
+    "MAE": "Mean Absolute Error",
+    "R2": "R² (Coefficient of Determination)",
+}
+_BP_TEST_RES_KEYS = {"lm", "lm_pvalue", "f", "f_pvalue"}
 
 
 def _compare_model_selection_from_last_run(selected_models: list[str]):
@@ -60,11 +73,11 @@ def _model_param_ui(algo: str) -> dict:
 def _multimodel_param_ui(selected_models: list[str]) -> dict[str, dict]:
     blocks: dict[str, dict] = {}
     with st.container(border=True):
-        st.markdown("Hyperparameters (per selected model)")
+        st.markdown("#### Hyperparameters (per selected model)")
         for m in selected_models:
             st.markdown(f"**{m}**")
             blocks[m] = _model_param_ui(m)
-            st.markdown("---")
+            # st.markdown("---")
     return blocks
 
 
@@ -128,6 +141,163 @@ def _choose_display_pred(base_out, wgt, avg):
     return base_out["valid_preds"][best], f"best_model:{best}"
 
 
+def _format_val(v):
+    # format floats to 4 d.p.; use scientific for very small p-values
+    if isinstance(v, (int,)) and not isinstance(v, bool):
+        return f"{v:d}"
+    if isinstance(v, float):
+        if 0 < v < 1e-4:
+            return f"{v:.2e}"
+        return f"{v:.4f}"
+    return str(v)
+
+
+def _standardize_metrics_dict(d: dict) -> pd.DataFrame:
+    """Turn a flat metrics dict into a 2-col DataFrame with friendly names."""
+    if not isinstance(d, dict):
+        return pd.DataFrame()
+    rows = []
+    for k, v in d.items():
+        label = METRIC_NAMES.get(k, k)
+        rows.append((label, _format_val(v)))
+    df = pd.DataFrame(rows, columns=["Metric", "Value"])
+    df.set_index("Metric", inplace=True)
+    return df
+
+
+def _split_bp_test_results_from_model_metrics(model_metrics: list):
+    """
+    Inspect per_model metrics and, ONLY FOR DISPLAY:
+    - find LR row (model name contains 'linear', case-insensitive),
+    - extract BP (nested 'bp' OR flat keys),
+    - return (cleaned_per_model_without_bp, bp_obj or None).
+    """
+    if not isinstance(model_metrics, list) or not model_metrics:
+        return model_metrics, None
+
+    cleaned = []
+    bp_found = None
+
+    for row in model_metrics:
+        if not isinstance(row, dict):
+            cleaned.append(row)
+            continue
+        row_copy = deepcopy(row)
+        model_name = str(row_copy.get("model", "")).lower()
+        is_lr = "linearregression" in model_name
+
+        # Prefer nested dict if present
+        nested_bp = row_copy.pop("bp", None) if is_lr and "bp" in row_copy else None
+        if is_lr and nested_bp is not None:
+            bp_found = {k.lower(): v for k, v in ast.literal_eval(nested_bp).items()}
+
+        cleaned.append(row_copy)
+    LOGGER.debug(f"BP object extracted [{bp_found}]]")
+    return cleaned, bp_found
+
+
+def _convert_bp_test_results_to_df(bp_obj) -> pd.DataFrame:
+    """
+    Normalize BP outputs into a 2-col table.
+    Accepts:
+      - dict with keys like: lm_stat / lm_pvalue / fvalue / f_pvalue
+      - sequence/tuple of 4 (lm_stat, lm_pvalue, fvalue, f_pvalue)
+      - any mixed naming ('Lagrange multiplier statistic', etc.)
+    """
+    LOGGER.info(f"BP output [{bp_obj}]]")
+    # extract four numbers robustly
+    lm = lmp = fstat = fp = None
+    if isinstance(bp_obj, dict):
+        # try common keys
+        lm = bp_obj.get("lm")
+        lmp = bp_obj.get("lm_pvalue")
+        fstat = bp_obj.get("f")
+        fp = bp_obj.get("f_pvalue")
+    elif isinstance(bp_obj, (list, tuple)) and len(bp_obj) >= 4:
+        lm, lmp, fstat, fp = bp_obj[:4]
+
+    rows = [
+        ("LM statistic", _format_val(lm) if lm is not None else "—"),
+        ("LM p-value", _format_val(lmp) if lmp is not None else "—"),
+        ("F statistic", _format_val(fstat) if fstat is not None else "—"),
+        ("F p-value", _format_val(fp) if fp is not None else "—"),
+    ]
+    df = pd.DataFrame(rows, columns=["Breusch–Pagan", "Value"])
+    df.set_index("Breusch–Pagan", inplace=True)
+    return df
+
+
+def _convert_model_metrics_to_df(model_metrics: list) -> pd.DataFrame:
+    """Make per-model metrics pretty with expanded names and numeric formatting."""
+    if not model_metrics:
+        return pd.DataFrame()
+    df = pd.DataFrame(model_metrics).copy()
+
+    # rename columns if present
+    rename_map = {k: v for k, v in METRIC_NAMES.items() if k in df.columns}
+    df.rename(columns=rename_map, inplace=True)
+
+    # nice float formatting for known columns
+    for col in df.columns:
+        df[col] = df[col].map(_format_val)
+
+    # Remove 'bp' from display
+    df = df.drop(columns=["bp"])
+
+    # put 'model' as index if present
+    if "model" in df.columns:
+        df.set_index("model", inplace=True)
+
+    return df
+
+
+def _show_last_model_stats():
+    """Bottom panel with the stats already in session."""
+    res = st.session_state.get("last_model") or {}
+    if res:
+        st.divider()
+        st.markdown("### Last Model Stats")
+
+        col1, col2 = st.columns(2)
+
+        # --- Ensemble: Weighted ---
+        with col1:
+            st.markdown("**Ensemble: Weighted (1/RMSE)**")
+            wgt_metrics = (res.get("ensemble_wgt") or {}).get("metrics")
+            if wgt_metrics:
+                st.dataframe(_standardize_metrics_dict(wgt_metrics), use_container_width=True)
+            else:
+                st.info("No weighted ensemble metrics found.")
+
+        # --- Ensemble: Average ---
+        with col2:
+            st.markdown("**Ensemble: Simple Average**")
+            avg_metrics = (res.get("ensemble_avg") or {}).get("metrics")
+            if avg_metrics:
+                st.dataframe(_standardize_metrics_dict(avg_metrics), use_container_width=True)
+            else:
+                st.info("No simple average metrics found.")
+
+        # --- Per-model metrics (expanded names) ---
+        st.markdown("**Model Validation Metrics**")
+        model_metrics = (res.get("base") or {}).get("per_model_metrics") or []
+        model_metrics, bp_results = _split_bp_test_results_from_model_metrics(model_metrics)
+        model_metrics = _convert_model_metrics_to_df(model_metrics)
+        st.dataframe(model_metrics)
+
+        # --- Breusch–Pagan (from top-level or base) ---
+        if bp_results is not None:
+            st.markdown("**Heteroscedasticity (Breusch–Pagan)**")
+            st.dataframe(_convert_bp_test_results_to_df(bp_results))
+
+        pred_src = res.get("pred_source") or "unknown"
+        st.caption(f"**Prediction source used for visuals**: {PRED_SRC_DISP_NAMES.get(pred_src)}")
+
+        run_dir = st.session_state.get("last_model_run_dir")
+        if run_dir:
+            st.caption(f"**Artifacts saved under**: `{run_dir}`")
+
+
 # ----------------------------------------------------------------------
 # Page render (MENU-TRIGGERED ENTRY POINT) — PARALLEL ONLY
 # ----------------------------------------------------------------------
@@ -151,25 +321,27 @@ def render():
         return
 
     # Target + features
-    default_target = "price"
-    target = st.selectbox(
-        "Target (dependent variable)",
-        num_cols,
-        index=num_cols.index(default_target) if default_target in num_cols else 0
-    )
-    features = st.multiselect(
-        "Feature columns (independent variables)",
-        [c for c in df.columns if c != target],
-        default=[c for c in num_cols if c != target],
-    )
-    if not features:
-        st.info("Please select at least one feature.")
-        return
+    with st.container(border=True):
+        st.markdown("#### Feature Selection")
+        default_target = "price"
+        target = st.selectbox(
+            "Target (dependent variable)",
+            num_cols,
+            index=num_cols.index(default_target) if default_target in num_cols else 0
+        )
+        features = st.multiselect(
+            "Feature columns (independent variables)",
+            [c for c in df.columns if c != target],
+            default=[c for c in num_cols if c != target],
+        )
+        if not features:
+            st.info("Please select at least one feature.")
+            return
 
     # Allowed models only (from your excerpt)
     allowed = AVAILABLE_MODELS.keys()
     with st.container(border=True):
-        st.markdown("Model Selection")
+        st.markdown("#### Model Selection")
         selected_models = st.multiselect(
             "Select models to train",
             allowed,
@@ -185,7 +357,7 @@ def render():
 
     # Single unified action: Train & Evaluate (parallel only)
     if st.button("Train & Evaluate", type="primary"):
-        with st.spinner(f"Training in parallel on {label}..."):
+        with st.spinner(f"Training on {label}..."):
             base_train_out = train_models_parallel(
                 df[features + [target]],
                 target,
@@ -235,3 +407,5 @@ def render():
         )
         st.session_state["last_model_run_dir"] = run_dir
         st.success("Training and evaluation completed.")
+
+    _show_last_model_stats()

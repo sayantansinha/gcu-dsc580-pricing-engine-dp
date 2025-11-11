@@ -26,7 +26,7 @@ def _display_chart(img_data_uri: str):
     if isinstance(img_data_uri, str) and img_data_uri.startswith("data:image"):
         b64 = img_data_uri.split(",", 1)[1]
         img_bytes = base64.b64decode(b64)
-        st.image(img_bytes, use_column_width=True)  # ← older Streamlit arg
+        st.image(img_bytes, use_column_width=True)
     else:
         st.image(img_data_uri, use_column_width=True)
 
@@ -46,14 +46,20 @@ def render():
         st.error("Could not find y_true / y_pred in the last model results.")
         return
 
-    st.subheader("Actual vs Predicted")
+    # --- chart images generated ---
     p1 = chart_actual_vs_pred(y_true, y_pred)
-    _display_chart(p1)
-
-    st.subheader("Residuals vs Predicted")
     p2 = chart_residuals(y_true, y_pred)
-    _display_chart(p2)
-
-    st.subheader("Residuals Q–Q Plot")
     p3 = chart_residuals_qq(y_true, y_pred)
-    _display_chart(p3)
+
+    # --- 2-column layout ---
+    c1, c2 = st.columns(2, gap="medium")
+
+    with c1:
+        _display_chart(p1)
+
+    with c2:
+        _display_chart(p2)
+
+    c3, _ = st.columns(2, gap="medium")
+    with c3:
+        _display_chart(p3)
