@@ -21,7 +21,7 @@ from src.ui.pipeline_steps.exploration import render_exploration_section
 from src.ui.pipeline_steps.cleaning import render_cleaning_section
 from src.ui.pipeline_steps.analytical_tools import render as render_models
 from src.ui.pipeline_steps.visual_tools import render as render_visuals
-from src.ui.pipeline_steps.report_generator import render as render_reports
+from src.ui.pipeline_steps.reporting import render as render_reports
 
 LOGGER = get_logger("pipeline_hub")
 
@@ -266,8 +266,8 @@ def render():
         else:
             st.info("Train a model to enable visual tools.")
 
-    # Report Generator
-    with st.expander("Report Generator", expanded=False):
+    # Reporting
+    with st.expander("Reporting", expanded=False):
         if model_path:
             with _suppress_child_section_panels():
                 render_reports()

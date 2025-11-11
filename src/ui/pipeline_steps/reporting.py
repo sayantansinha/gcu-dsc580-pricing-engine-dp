@@ -39,7 +39,7 @@ def _show_download_button_for_report(report_path: Path) -> None:
 
 
 def render():
-    st.header("Report Generator")
+    st.header("Reporting")
     run_id = st.session_state.run_id
     # Model artifacts (from last training)
     res = st.session_state.get("last_model")
