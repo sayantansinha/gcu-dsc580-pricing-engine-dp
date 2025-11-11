@@ -16,9 +16,10 @@ from src.config.env_loader import SETTINGS
 # -------------------------------------------------------------------
 APP_NAME = "Predictive Pricing Engine"
 _LOGO_PATHS = [
-    "src/assets/logo.svg",
+    "src/ui/assets/logo.svg",
+    "ui/assets/logo.svg",
     "assets/logo.svg",
-    "logo.svg",
+    "logo.svg"
 ]
 
 
