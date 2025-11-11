@@ -49,4 +49,18 @@ http://localhost:8501
 6. **Visual Tools**: Includes visualization and exploration utilities. Users can view correlation heatmaps, distribution charts, and engagement-level analyses across various features.
 7. **Reporting**: After modeling, users can generate visual performance reports, download summaries in PDF or CSV format, and review metadata logs stored under `data/reports/<run_id>`.
 
+This below table provides contextual guidance for using each pipeline expander panel responsibly within the user interface.
+
+| **Pipeline Sections**            | **Help & Compliance Guidance**                                                                                                                                                             |
+|----------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Data Staging**                 | Supported file formats (CSV, Parquet, TZ) and schema validation rules enforced by the `validator/schema_validator.py` module. Avoid uploading personally identifiable or proprietary data. |
+| **Feature Master**               | Features are generated and consolidated from staged datasets.                                                                                                                              |
+| **Display Data**                 | Provides guidance on interpreting descriptive statistics and column summaries. Exploratory summaries are diagnostic and not final decision outputs.                                        |
+| **Exploration (EDA)**            | Offers recommendations for safe data visualization, including use of filters and scaling. Avoid drawing conclusions without statistical validation.                                        |
+| **Preprocessing (and Cleaning)** | Outlines how normalization, encoding, and outlier handling modify data distributions. Save final output as a cleaned feature master, ready for modeling                                    |
+| **Analytical Tools – Model**     | Lists supported models (Linear Regression, Ridge, Gradient Boosting) and defines key metrics such as R², MAE, and RMSE.                                                                    |
+| **Visual Tools**                 | Details interactive chart behavior (hover, filter, zoom) and cautions against overfitting when visually comparing model outcomes.                                                          |
+| **Reporting**                    | Current report generated summaries the model outputs, along with a data preview.                                                                                                           |
+
+
 _**Note**: The app is designed to run locally for now, with plans to deploy on a cloud platform like AWS in future.
