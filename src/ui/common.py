@@ -114,10 +114,17 @@ def load_active_cleaned_feature_master_from_session():
     return pd.read_parquet(p), os.path.basename(p)
 
 
-def show_last_training_badge():
+def extract_last_trained_models(fornatted: bool = False):
     last_trained_models = st.session_state.get("last_model")["trained_models"]
-    if last_trained_models:
-        st.success(f"Last trained models: **{', '.join(last_trained_models)}**")
+    if last_trained_models and fornatted:
+        return ', '.join(last_trained_models)
+    else:
+        return last_trained_models
+
+
+def show_last_training_badge():
+    last_trained_models = extract_last_trained_models(True)
+    st.success(f"Last trained models: **{last_trained_models}**")
 
 
 def store_last_model_info_in_session(

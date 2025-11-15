@@ -115,5 +115,5 @@ def render():
         if latest_generated_report:
             st.session_state["report_generated"] = True
             st.markdown("---")
-            st.success(f"Report available for download: **{latest_generated_report.name}**")
-            _show_download_button_for_report(latest_generated_report)
+            st.success(f"Report available for download: **{latest_generated_report}**")
+            _show_download_button_for_report(Path(latest_generated_report))

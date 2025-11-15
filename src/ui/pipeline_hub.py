@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from src.config.env_loader import SETTINGS
-from src.ui.common import store_last_model_info_in_session
+from src.ui.common import store_last_model_info_in_session, extract_last_trained_models
 from src.ui.pipeline_flow import render_pipeline_flow
 from src.utils.data_io_utils import latest_file_under_directory
 from src.utils.log_utils import get_logger
@@ -45,6 +45,7 @@ def _probe_feature_master_artifacts(run_id: str) -> Tuple[Optional[Path], Option
     run_proc = Path(SETTINGS.PROCESSED_DIR) / run_id
     fm_raw = latest_file_under_directory("feature_master_", run_proc, exclusion="cleaned")
     fm_clean = latest_file_under_directory("feature_master_cleaned_", run_proc)
+    LOGGER.info(f"Probed feature master artifacts :: raw [{fm_raw}], clean [{fm_clean}]")
     return fm_raw, fm_clean
 
 
@@ -164,12 +165,12 @@ def render():
 
     # Status strip for clarity when resuming
     with st.container(border=True):
-        fm_raw_label = fm_raw_path.name if fm_raw_path else "N/A"
-        fm_clean_label = fm_clean_path.name if fm_clean_path else "N/A"
-        model_flag = "available" if model_path else "N/A"
+        fm_raw_label = fm_raw_path if fm_raw_path else "N/A"
+        fm_clean_label = fm_clean_path if fm_clean_path else "N/A"
+        last_trained_models = extract_last_trained_models(True) if model_path else "N/A"
         st.markdown(
             f"> **Current artifacts** — Feature Master (raw): **{fm_raw_label}** "
-            f"| Feature Master (cleaned): **{fm_clean_label}** |  Model: **{model_flag}**"
+            f"| Feature Master (cleaned): **{fm_clean_label}** |  Model(s): **{last_trained_models}**"
         )
 
         # Reserve a fixed slot to render
