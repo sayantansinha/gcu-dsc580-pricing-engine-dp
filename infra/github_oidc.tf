@@ -33,36 +33,41 @@ resource "aws_iam_role" "gha_deployer" {
   tags = local.tags
 }
 
-# Least-privilege policy for uploading artifact to S3 and triggering CodeDeploy
+# Policy for uploading artifact to S3 and triggering CodeDeploy
 resource "aws_iam_policy" "gha_deploy_policy" {
   name = "${local.app_prefix}-gha-deploy"
   policy = jsonencode({
     Version = "2012-10-17",
-    Statement : [
+    Statement = [
       {
-        "Sid" : "PutArtifact",
-        "Effect" : "Allow",
-        "Action" : ["s3:PutObject", "s3:PutObjectAcl"],
-        "Resource" : [
-          "arn:aws:s3:::${local.reports_bucket}/releases/*"
+        Sid    = "PutArtifact"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:PutObjectAcl"
+        ]
+        Resource = [
+          "arn:aws:s3:::${local.deploy_artifact_bucket}/releases/*"
         ]
       },
       {
-        "Sid" : "TriggerCodeDeploy",
-        "Effect" : "Allow",
-        "Action" : ["codedeploy:CreateDeployment", "codedeploy:GetDeployment"],
-        "Resource" : "*"
-      },
-      {
-        "Sid" : "ReadCdMeta",
-        "Effect" : "Allow",
-        "Action" : ["codedeploy:GetDeploymentConfig", "codedeploy:GetApplication", "codedeploy:GetDeploymentGroup"],
-        "Resource" : "*"
+        Sid    = "CodeDeployDeploy"
+        Effect = "Allow"
+        Action = [
+          "codedeploy:CreateDeployment",
+          "codedeploy:RegisterApplicationRevision",
+          "codedeploy:GetDeployment",
+          "codedeploy:GetDeploymentConfig",
+          "codedeploy:GetApplication",
+          "codedeploy:GetDeploymentGroup"
+        ]
+        Resource = "*"
       }
     ]
   })
   tags = local.tags
 }
+
 
 resource "aws_iam_role_policy_attachment" "gha_attach" {
   role       = aws_iam_role.gha_deployer.name

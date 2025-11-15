@@ -15,7 +15,7 @@ env:
   AWS_REGION: us-west-2
   APP_NAME: ppe
   DEPLOY_GROUP: ppe-blue
-  ARTIFACT_BUCKET: ppe-poc-reports
+  ARTIFACT_BUCKET: ppe-poc-deploy-artifacts
   ARTIFACT_KEY: releases/ppe-${{ github.sha }}.zip
 
 jobs:

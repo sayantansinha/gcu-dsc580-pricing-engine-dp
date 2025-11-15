@@ -13,7 +13,8 @@ locals {
     local.profiles_bucket,
     local.models_bucket,
     local.figures_bucket,
-    local.reports_bucket
+    local.reports_bucket,
+    local.deploy_artifact_bucket
   ]
 
   tags = {
