@@ -6,6 +6,10 @@ files:
     overwrite: true
 
 hooks:
+  BeforeInstall:
+    - location: deploy_scripts/cleanup_old_revision.sh
+      timeout: 300
+      runas: root
   AfterInstall:
     - location: deploy_scripts/install_deps.sh
       timeout: 900
