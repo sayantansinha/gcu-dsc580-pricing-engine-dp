@@ -47,7 +47,7 @@ resource "aws_security_group" "ppe_web" {
 
 # Free-Tier EC2
 resource "aws_instance" "ppe_ec2" {
-  ami                         = data.aws_ami.al2023.id
+  ami                         = local.ppe_ami
   instance_type               = "t2.micro"
   subnet_id                   = data.aws_subnets.default.ids[0]
   associate_public_ip_address = true
@@ -66,6 +66,7 @@ resource "aws_instance" "ppe_ec2" {
   tags = merge(local.tags, {
     "CodeDeploy:App"   = local.app_prefix
     "CodeDeploy:Group" = "${local.app_prefix}-blue"
+    Name = "${local.app_prefix}-ec2"
   })
 }
 

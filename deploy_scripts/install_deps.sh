@@ -1,16 +1,9 @@
 #!/bin/bash
 set -euo pipefail
-cd /opt/ppe/current
 
-# Python
-command -v python3.11 >/dev/null 2>&1 || dnf -y install python3.11 python3.11-pip
-/usr/bin/python3.11 -m pip install --upgrade pip
-if [ -f requirements.txt ]; then
-  printf "Installing dependencies"
-  /usr/bin/python3.11 -m pip install -r requirements.txt
-fi
-
-# systemd unit (only if you keep it versioned)
-printf "PPE service"
-install -m 0644 deploy_scripts/ppe.service /etc/systemd/system/ppe.service || true
-systemctl daemon-reload
+echo "[install_deps] Dependencies baked into AMI; skipping heavy install."
+# optionally run: no needed as its baked into the AMI
+# source /opt/ppe-venv/bin/activate
+# export TMPDIR=/opt/ppe-tmp
+# pip install -r /opt/ppe-app/requirements.txt --no-deps
+exit 0

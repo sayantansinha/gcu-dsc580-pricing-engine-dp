@@ -1,4 +1,6 @@
 #!/bin/bash
 set -euo pipefail
-systemctl enable ppe.service
-systemctl restart ppe.service
+
+sudo systemctl daemon-reload
+sudo systemctl restart ppe.service
+sudo systemctl status ppe.service --no-pager -l || true
