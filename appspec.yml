@@ -1,0 +1,16 @@
+version: 0.0
+os: linux
+files:
+  - source: /
+    destination: /opt/ppe/current
+    overwrite: true
+
+hooks:
+  AfterInstall:
+    - location: deploy_scripts/install_deps.sh
+      timeout: 900
+      runas: root
+  ApplicationStart:
+    - location: deploy_scripts/restart_service.sh
+      timeout: 120
+      runas: root

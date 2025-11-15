@@ -3,54 +3,89 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Optional, List
+
 import pandas as pd
 import requests
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-from io import BytesIO
 
 from src.config.env_loader import SETTINGS
 from src.utils.log_utils import get_logger
+from src.utils.s3_utils import (
+    ensure_bucket,
+    list_bucket_objects,
+    load_bucket_object,
+    write_dataframe_parquet,
+    write_bucket_object,
+    formulate_s3_uri,
+)
 
-LOGGER = get_logger("data_io")
-
+LOGGER = get_logger("data_io_utils")
 
 # -----------------------------
-# Session cache
+# Helpers: resolve where to write/read
 # -----------------------------
-# def set_final_df(df: pd.DataFrame):
-#     """Cache the active DataFrame in Streamlit session."""
-#     st.session_state["final_df"] = df
-#     LOGGER.info("final_df stored in Streamlit session")
-#
-#
-# def get_final_df() -> pd.DataFrame | None:
-#     """Retrieve cached DataFrame."""
-#     return st.session_state.get("final_df")
+def _is_s3() -> bool:
+    return SETTINGS.IO_BACKEND == "S3"
+
+def _ensure_buckets():
+    # idempotent
+    for b in filter(None, [
+        SETTINGS.RAW_BUCKET, SETTINGS.PROCESSED_BUCKET, SETTINGS.PROFILES_BUCKET,
+        SETTINGS.FIGURES_BUCKET, SETTINGS.MODELS_BUCKET, SETTINGS.REPORTS_BUCKET
+    ]):
+        ensure_bucket(b)
 
 # -----------------------------
 # Raw data
 # -----------------------------
 def save_raw(df: pd.DataFrame, base_dir: str, name: str) -> str:
-    """Save processed dataset under PROCESSED_DIR."""
-    path = os.path.join(Path(SETTINGS.RAW_DIR) / base_dir, f"{name}.parquet")
-    df.to_parquet(path, index=False)
-    LOGGER.info(f"Saved processed data file → {path}")
-    return path
+    """
+    Save raw dataset either to local or S3.
+    base_dir acts as a subdirectory (LOCAL) or a prefix (S3).
+    """
+    if _is_s3():
+        _ensure_buckets()
+        key = f"{base_dir.strip('/')}/{name}.parquet"
+        write_dataframe_parquet(df, SETTINGS.RAW_BUCKET, key, index=False)
+        uri = formulate_s3_uri(SETTINGS.RAW_BUCKET, key)
+        LOGGER.info(f"Saved raw (S3) → {uri}")
+        return uri
+    else:
+        path = os.path.join(Path(SETTINGS.RAW_DIR) / base_dir, f"{name}.parquet")
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(path, index=False)
+        LOGGER.info(f"Saved raw (LOCAL) → {path}")
+        return path
 
-
-def load_raw(path: str) -> pd.DataFrame:
-    """Load processed dataset from PROCESSED_DIR."""
-    try:
-        LOGGER.info(f"Loading processed data file ← {path}")
+def load_raw(path_or_name: str, base_dir: Optional[str] = None) -> pd.DataFrame:
+    """
+    Load raw dataset. If S3, pass name without suffix + base_dir; if LOCAL, pass a full path.
+    """
+    if _is_s3():
+        name = path_or_name if path_or_name.endswith(".parquet") else f"{path_or_name}.parquet"
+        key = f"{base_dir.strip('/')}/{name}" if base_dir else name
+        LOGGER.info(f"Loading raw (S3) ← s3://{SETTINGS.RAW_BUCKET}/{key}")
+        return load_bucket_object(SETTINGS.RAW_BUCKET, key)
+    else:
+        path = path_or_name
+        LOGGER.info(f"Loading raw (LOCAL) ← {path}")
         return pd.read_parquet(path)
-    except Exception as ex:
-        error_text = f"Error loading file from {path}"
-        LOGGER.exception(error_text)
-        raise ValueError(error_text) from ex
 
+def list_raw_files(base_dir: str) -> List[str]:
+    if _is_s3():
+        prefix = f"{base_dir.strip('/')}/"
+        keys = [k for k in list_bucket_objects(SETTINGS.RAW_BUCKET, prefix) if k.endswith(".parquet")]
+        keys.sort()
+        LOGGER.info(f"Listing raw (S3) {SETTINGS.RAW_BUCKET}/{prefix} => {keys}")
+        return keys
+    else:
+        raw = Path(SETTINGS.RAW_DIR) / base_dir
+        if not os.path.isdir(raw):
+            return []
+        files = [f for f in os.listdir(raw) if f.endswith(".parquet")]
+        files.sort()
+        LOGGER.info(f"Listing raw (LOCAL) {raw} => {files}")
+        return files
 
 def save_from_url(url: str, base_dir: str) -> str:
     try:
@@ -67,100 +102,126 @@ def save_from_url(url: str, base_dir: str) -> str:
             r.raise_for_status()
             df = pd.read_csv(_io.StringIO(r.text))
 
-        raw_path = save_raw(df, base_dir, base_name)
-        LOGGER.info(f"File read and saved from URL: {url}")
-        return raw_path
+        return save_raw(df, base_dir, base_name)
     except Exception as ex:
         error_text = f"Error reading file from {url}"
         LOGGER.exception(error_text)
         raise ValueError(error_text) from ex
 
-
-def list_raw_files(base_dir: str) -> list[str]:
-    try:
-        raw = Path(SETTINGS.RAW_DIR) / base_dir
-        if not os.path.isdir(raw):
-            return []
-        files = [f for f in os.listdir(raw) if f.endswith(".parquet")]
-        files.sort()
-        LOGGER.info(f"Listing raw files in {raw} directory => {files}")
-        return files
-    except Exception as ex:
-        error_text = f"Error listing raw files from {raw} directory"
-        LOGGER.exception(error_text)
-        raise ValueError(error_text) from ex
-
-
 # -----------------------------
 # Processed data
 # -----------------------------
 def save_processed(df: pd.DataFrame, base_dir: str, name: str) -> str:
-    """Save processed dataset under PROCESSED_DIR."""
-    path = os.path.join(Path(SETTINGS.PROCESSED_DIR) / base_dir, f"{name}.parquet")
-    df.to_parquet(path, index=False)
-    LOGGER.info(f"Saved processed data file → {path}")
-    return path
+    if _is_s3():
+        _ensure_buckets()
+        key = f"{base_dir.strip('/')}/{name}.parquet"
+        write_dataframe_parquet(df, SETTINGS.PROCESSED_BUCKET, key, index=False)
+        uri = formulate_s3_uri(SETTINGS.PROCESSED_BUCKET, key)
+        LOGGER.info(f"Saved processed (S3) → {uri}")
+        return uri
+    else:
+        path = os.path.join(Path(SETTINGS.PROCESSED_DIR) / base_dir, f"{name}.parquet")
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(path, index=False)
+        LOGGER.info(f"Saved processed (LOCAL) → {path}")
+        return path
 
-
-def load_processed(name: str, base_dir: str) -> pd.DataFrame:
-    """Load processed dataset from PROCESSED_DIR."""
-    try:
+def load_processed(name: str, base_dir: str = None) -> pd.DataFrame:
+    if _is_s3():
         name = name if name.endswith(".parquet") else f"{name}.parquet"
-        path = os.path.join(Path(SETTINGS.PROCESSED_DIR) / base_dir, f"{name}")
-        LOGGER.info(f"Loading processed data file ← {path}")
+        key = f"{base_dir.strip('/')}/{name}" if base_dir else name
+        LOGGER.info(f"Loading processed (S3) ← s3://{SETTINGS.PROCESSED_BUCKET}/{key}")
+        return load_bucket_object(SETTINGS.PROCESSED_BUCKET, key)
+    else:
+        name = name if name.endswith(".parquet") else f"{name}.parquet"
+        path = os.path.join(Path(SETTINGS.PROCESSED_DIR) / base_dir, name)
+        LOGGER.info(f"Loading processed (LOCAL) ← {path}")
         return pd.read_parquet(path)
-    except Exception as ex:
-        LOGGER.error("Error loading processed data file", exc_info=ex)
-        raise ValueError("Error loading processed data file") from ex
-
 
 # -----------------------------
 # Figures
 # -----------------------------
 def save_figure(fig, base_dir: str, name: str) -> str:
-    """Save matplotlib/plotly figure to FIGURES_DIR."""
-    path = os.path.join(Path(SETTINGS.FIGURES_DIR) / base_dir, f"{name}.png")
-    fig.savefig(path, bbox_inches="tight")
-    LOGGER.info(f"Saved figure → {path}")
-    return path
-
+    if _is_s3():
+        _ensure_buckets()
+        # Save to bytes, then PUT to S3
+        from io import BytesIO
+        buf = BytesIO()
+        fig.savefig(buf, bbox_inches="tight")
+        buf.seek(0)
+        key = f"{base_dir.strip('/')}/{name}.png"
+        write_bucket_object(SETTINGS.FIGURES_BUCKET, key, buf.read(), content_type="image/png")
+        uri = formulate_s3_uri(SETTINGS.FIGURES_BUCKET, key)
+        LOGGER.info(f"Saved figure (S3) → {uri}")
+        return uri
+    else:
+        path = os.path.join(Path(SETTINGS.FIGURES_DIR) / base_dir, f"{name}.png")
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(path, bbox_inches="tight")
+        LOGGER.info(f"Saved figure (LOCAL) → {path}")
+        return path
 
 # -----------------------------
 # Profiles / validation summaries
 # -----------------------------
 def save_profile(profile_obj: dict, base_dir: str, name: str) -> str:
-    """Save data validation or profiling result to PROFILES_DIR."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    path = os.path.join(Path(SETTINGS.PROFILES_DIR) / base_dir, f"{name}_{timestamp}.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(profile_obj, f, indent=2)
-    LOGGER.info(f"Saved profile summary → {path}")
-    return path
-
+    filename = f"{name}_{timestamp}.json"
+    if _is_s3():
+        _ensure_buckets()
+        key = f"{base_dir.strip('/')}/{filename}"
+        write_bucket_object(
+            SETTINGS.PROFILES_BUCKET,
+            key,
+            json.dumps(profile_obj, indent=2),
+            content_type="application/json"
+        )
+        uri = formulate_s3_uri(SETTINGS.PROFILES_BUCKET, key)
+        LOGGER.info(f"Saved profile (S3) → {uri}")
+        return uri
+    else:
+        path = os.path.join(Path(SETTINGS.PROFILES_DIR) / base_dir, filename)
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(profile_obj, f, indent=2)
+        LOGGER.info(f"Saved profile (LOCAL) → {path}")
+        return path
 
 # -----------------------------
-# Find latest under
+# Latest file under (LOCAL or S3)
 # -----------------------------
 def latest_file_under_directory(
         prefix: str,
-        under_dir: Path,
+        under_dir: Path | None = None,
         suffix: str = ".parquet",
         exclusion: str = None
-) -> Optional[Path]:
-    if not under_dir.exists():
-        LOGGER.warning(f"Directory {under_dir.name} doesn't exist")
-        return None
-
-    files = [p for p in under_dir.iterdir()
-             if p.is_file()
-             and p.name.startswith(prefix)
-             and p.suffix == suffix
-             and (exclusion is None or exclusion not in p.name)]
-
-    if not files:
-        LOGGER.warning(f"No files found under {under_dir.name} directory")
-        return None
-
-    LOGGER.debug(f"Found {len(files)} files under directory {under_dir.name} :: {files}")
-    files.sort(key=lambda p: p.name, reverse=True)
-    return files[0]
+) -> Optional[str]:
+    if _is_s3():
+        # Default to processed bucket / root if no base provided
+        base_prefix = "" if under_dir is None else str(under_dir).strip("/")
+        search = f"{base_prefix}/{prefix}".strip("/")
+        keys = [k for k in list_bucket_objects(SETTINGS.PROCESSED_BUCKET, search)
+                if k.startswith(search) and k.endswith(suffix) and (exclusion is None or exclusion not in k)]
+        if not keys:
+            LOGGER.warning(f"No keys under s3://{SETTINGS.PROCESSED_BUCKET}/{search}")
+            return None
+        keys.sort(reverse=True)
+        latest = keys[0]
+        return formulate_s3_uri(SETTINGS.PROCESSED_BUCKET, latest)
+    else:
+        if under_dir is None:
+            LOGGER.warning("under_dir is required for LOCAL backend")
+            return None
+        if not under_dir.exists():
+            LOGGER.warning(f"Directory {under_dir.name} doesn't exist")
+            return None
+        files = [p for p in under_dir.iterdir()
+                 if p.is_file()
+                 and p.name.startswith(prefix)
+                 and p.suffix == suffix
+                 and (exclusion is None or exclusion not in p.name)]
+        if not files:
+            LOGGER.warning(f"No files found under {under_dir.name} directory")
+            return None
+        files.sort(key=lambda p: p.name, reverse=True)
+        return str(files[0])

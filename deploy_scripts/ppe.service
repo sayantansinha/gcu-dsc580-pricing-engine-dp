@@ -1,0 +1,13 @@
+[Unit]
+Description=PPE Streamlit App
+After=network.target
+
+[Service]
+User=ec2-user
+WorkingDirectory=/opt/ppe/current
+ExecStart=/usr/bin/python3.11 -m streamlit run src/app.py --server.port 8501 --server.address 0.0.0.0
+Restart=always
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
