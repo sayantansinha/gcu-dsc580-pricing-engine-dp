@@ -85,4 +85,7 @@ hs_err_pid*
 
 # Terrafor files
 **/.terraform
-**.terraform
+**terraform**
+
+# Test
+test/_trial_temp
