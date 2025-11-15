@@ -8,7 +8,7 @@ files:
 hooks:
   AfterInstall:
     - location: deploy_scripts/install_deps.sh
-      timeout: 900
+      timeout: 3600
       runas: root
   ApplicationStart:
     - location: deploy_scripts/restart_service.sh
