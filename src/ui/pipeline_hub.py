@@ -254,7 +254,7 @@ def render():
 
     # Re-probe after modeling
     model_path = _probe_model_artifacts(run_id)
-    if st.session_state["last_model"] is None:
+    if model_path is not None:
         _activate_model(model_path)
 
     _render_flow_diagram()
