@@ -141,7 +141,6 @@ def get_nav() -> tuple[str, str]:
         st.markdown('<div class="menu-separator"></div>', unsafe_allow_html=True)
 
         # New Button
-        # st.markdown('<div class="sticky-footer"><div class="footer-row">', unsafe_allow_html=True)
         if st.button("New Pipeline", key="btn_new_run", use_container_width=True):
             new_id = _new_run_id()
             st.session_state["run_id"] = new_id
@@ -149,7 +148,6 @@ def get_nav() -> tuple[str, str]:
             st.session_state.pop("_raw_preview", None)
             _ensure_run_dirs(new_id)
             st.rerun()
-        # st.markdown('</div></div>', unsafe_allow_html=True)
 
         if st.session_state.get("run_id"):
             return ("Pipeline Runs", "pipeline_hub")

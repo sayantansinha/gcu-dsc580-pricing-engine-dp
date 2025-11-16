@@ -46,10 +46,6 @@ section[data-testid="stSidebar"] .stButton > button {
     transition: background .2s, border .2s, box-shadow .2s;
     background: rgba(67, 84, 230, 0.18);
     border: 1px solid rgba(67, 84, 230, 0.18);
-    /*color: rgba(255, 255, 255, .96);*/
-    /*color: var(--background-color) !important; */
-    /*background: var(--primary-color) !important; */
-    /*border: 1px solid var(--primary-color) !important;*/
 }
 
 section[data-testid="stSidebar"] .stButton > button:hover {
@@ -57,15 +53,6 @@ section[data-testid="stSidebar"] .stButton > button:hover {
     border-color: rgba(80, 76, 215, 0.47);
     filter: brightness(0.92);
 }
-
-/* Sidebar container layout */
-/*section[data-testid="stSidebar"] .block-container {*/
-/*    position: relative;*/
-/*    display: flex;*/
-/*    flex-direction: column;*/
-/*    height: 100vh;*/
-/*    padding-bottom: 0;*/
-/*}*/
 
 /* Section title */
 .sidebar-title {
@@ -91,58 +78,4 @@ section[data-testid="stSidebar"] .stButton > button:hover {
     width: 100%;
     margin: 16px 0;
 }
-/* Visual row grouping (used only for the label lines) */
-/*.menu-row {*/
-/*    display: flex;*/
-/*    flex-direction: column;*/
-/*    gap: .25rem;*/
-/*    padding: .25rem 0;*/
-/*    margin-bottom: .35rem;*/
-/*    border-radius: .9rem;*/
-/*}*/
 
-/*!* Status line *!*/
-/*.menu-status {*/
-/*    font-size: .85rem;*/
-/*    color: rgba(255, 255, 255, .78);*/
-/*    white-space: nowrap;*/
-/*    overflow: hidden;*/
-/*    text-overflow: ellipsis;*/
-/*    padding: .1rem .25rem .45rem .30rem;*/
-/*    margin: 0;*/
-/*}*/
-
-
-/* --------------------------------------------------------------
-   STICKY FOOTER (slim, no heavy gradient) + FOOTER BUTTON OVERRIDE
-   -------------------------------------------------------------- */
-/*.sticky-footer {*/
-/*    position: sticky;*/
-/*    bottom: 0;*/
-/*    width: 100%;*/
-/*    padding: .35rem .25rem .45rem .25rem;*/
-/*    background: transparent;*/
-/*    border-top: 1px solid rgba(255, 255, 255, .08);*/
-/*    backdrop-filter: none;*/
-/*}*/
-
-/*.footer-row {*/
-/*    display: flex;*/
-/*    justify-content: flex-end;*/
-/*    align-items: center;*/
-/*}*/
-
-/*!* Footer button (override the sidebar-wide rules above) *!*/
-/*.sticky-footer .stButton > button {*/
-/*    border-radius: .9rem;*/
-/*    background: rgba(99, 102, 241, .18) !important;*/
-/*    border: 1px solid rgba(99, 102, 241, .45) !important;*/
-/*    color: rgba(255, 255, 255, .98) !important;*/
-/*    padding: .50rem .85rem;*/
-/*    font-size: .92rem;*/
-/*}*/
-
-/*.sticky-footer .stButton > button:hover {*/
-/*    background: rgba(99, 102, 241, .28) !important;*/
-/*    border-color: rgba(99, 102, 241, .60) !important;*/
-/*}*/
