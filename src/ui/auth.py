@@ -49,7 +49,7 @@ def require_login():
         return
 
     # --- Center column layout ---
-    _, center, _ = st.columns([1, 2, 1])
+    _, center, _ = st.columns([1.5, 1, 1.5])
 
     with center:
         # --- Logo + title ---
