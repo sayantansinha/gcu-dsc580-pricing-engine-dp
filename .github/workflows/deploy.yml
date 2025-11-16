@@ -2,8 +2,18 @@ name: Deploy to EC2 via CodeDeploy
 
 on:
   push:
+    paths:
+      - 'src/**'
+      - 'deploy_scripts/**'
+      - 'infra/ec2.tf'
+      - '.github/workflows/deploy.yml'
     branches: [ "aws_deploy" ]
   pull_request:
+    paths:
+      - 'src/**'
+      - 'deploy_scripts/**'
+      - 'infra/ec2.tf'
+      - '.github/workflows/deploy.yml'
     branches: [ "aws_deploy" ]
   workflow_dispatch: { }
 

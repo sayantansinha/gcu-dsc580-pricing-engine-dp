@@ -21,6 +21,24 @@ resource "aws_iam_instance_profile" "ec2_profile" {
   role = aws_iam_role.ec2_role.name
 }
 
+resource "aws_iam_role_policy" "ec2_role_ssm_policy" {
+  name = "${local.app_prefix}-ssm-policy"
+  role = aws_iam_role.ec2_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter"
+        ]
+        Resource = aws_ssm_parameter.ppe_admin_password.arn
+      }
+    ]
+  })
+}
+
 # Tight S3 RW policy for just your buckets
 data "aws_iam_policy_document" "s3_rw" {
   statement {

@@ -10,28 +10,11 @@ from typing import List, Optional
 import streamlit as st
 
 from src.config.env_loader import SETTINGS
-
-# -------------------------------------------------------------------
-# App identity (logo + name)
-# -------------------------------------------------------------------
-APP_NAME = "Predictive Pricing Engine"
-_LOGO_PATHS = [
-    "src/ui/assets/logo.svg",
-    "ui/assets/logo.svg",
-    "assets/logo.svg",
-    "logo.svg"
-]
-
-
-def _logo_path() -> Path | None:
-    for p in _LOGO_PATHS:
-        if os.path.exists(p):
-            return Path(p)
-    return None
+from src.ui.common import logo_path, APP_NAME
 
 
 def _section_header():
-    path = _logo_path()
+    path = logo_path()
     if path:
         svg_text = path.read_text(encoding="utf-8")
         b64 = base64.b64encode(svg_text.encode("utf-8")).decode("ascii")

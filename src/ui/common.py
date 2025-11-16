@@ -10,6 +10,22 @@ from src.utils.log_utils import get_logger
 
 LOGGER = get_logger("ui_common")
 
+# App identity (logo + name)
+APP_NAME = "Predictive Pricing Engine"
+_LOGO_PATHS = [
+    "src/ui/assets/logo.svg",
+    "ui/assets/logo.svg",
+    "assets/logo.svg",
+    "logo.svg"
+]
+
+
+def logo_path() -> Path | None:
+    for p in _LOGO_PATHS:
+        if os.path.exists(p):
+            return Path(p)
+    return None
+
 
 def inject_css_from_file(css_path: str, rerun_on_first_load: bool = True):
     """
