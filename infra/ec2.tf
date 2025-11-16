@@ -11,6 +11,9 @@ resource "aws_instance" "ppe_ec2" {
     #!/bin/bash
     set -euo pipefail
 
+    # Set system timezone to PST (LA)
+    timedatectl set-timezone America/Los_Angeles
+
     # Basic updates and SSM agent
     dnf -y update || true
     dnf -y install python3.11 python3.11-pip amazon-ssm-agent amazon-cloudwatch-agent
@@ -19,7 +22,22 @@ resource "aws_instance" "ppe_ec2" {
     # Write CloudWatch Agent config
     mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
     cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CONFIGEOF'
-    ${local.ppe_cloudwatch_agent_config}
+    {
+      "logs": {
+        "logs_collected": {
+          "files": {
+            "collect_list": [
+              {
+                "file_path": "/var/log/ppe-app/ppe-app.log",
+                "log_group_name": "ppe-app-lg",
+                "log_stream_name": "{instance_id}",
+                "timezone": "LOCAL"
+              }
+            ]
+          }
+        }
+      }
+    }
     CONFIGEOF
 
     # Start CloudWatch Agent
