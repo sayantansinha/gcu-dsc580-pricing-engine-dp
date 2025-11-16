@@ -58,54 +58,53 @@ def require_login():
     _, center, _ = st.columns([1.5, 1, 1.5])
 
     with center:
-        with st.container(border=True):
-            # small inner padding
+        # small inner padding
+        st.markdown(
+            "<div style='padding: 1.25rem 1.5rem;'>",
+            unsafe_allow_html=True,
+        )
+
+        # --- Logo + title ---
+        path = logo_path()
+        app_heading = f"{APP_NAME} - Login"
+        if path:
+            svg_text = path.read_text(encoding="utf-8")
+            b64 = base64.b64encode(svg_text.encode("utf-8")).decode("ascii")
             st.markdown(
-                "<div style='padding: 1.25rem 1.5rem;'>",
+                f"""
+                <div style="
+                    background: #f3f4ff;
+                    padding: 0.75rem 1rem;
+                    border-radius: 0.75rem;
+                    display: flex;
+                    align-items: center;
+                    gap: 0.6rem;
+                    margin-bottom: 1.25rem;
+                ">
+                    <img src="data:image/svg+xml;base64,{b64}" width="36" />
+                    <span style="font-weight: 600; font-size: 1rem;">
+                        {app_heading}
+                    </span>
+                </div>
+                """,
                 unsafe_allow_html=True,
             )
-
-            # --- Logo + title ---
-            path = logo_path()
-            app_heading = f"{APP_NAME} - Login"
-            if path:
-                svg_text = path.read_text(encoding="utf-8")
-                b64 = base64.b64encode(svg_text.encode("utf-8")).decode("ascii")
-                st.markdown(
-                    f"""
-                    <div style="
-                        background: #f3f4ff;
-                        padding: 0.75rem 1rem;
-                        border-radius: 0.75rem;
-                        display: flex;
-                        align-items: center;
-                        gap: 0.6rem;
-                        margin-bottom: 1.25rem;
-                    ">
-                        <img src="data:image/svg+xml;base64,{b64}" width="36" />
-                        <span style="font-weight: 600; font-size: 1rem;">
-                            {app_heading}
-                        </span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    f"""
-                    <div style="
-                        background: #f3f4ff;
-                        padding: 0.75rem 1rem;
-                        border-radius: 0.75rem;
-                        margin-bottom: 1.25rem;
-                    ">
-                        <span style="font-weight: 600; font-size: 1rem;">
-                            {app_heading}
-                        </span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+        else:
+            st.markdown(
+                f"""
+                <div style="
+                    background: #f3f4ff;
+                    padding: 0.75rem 1rem;
+                    border-radius: 0.75rem;
+                    margin-bottom: 1.25rem;
+                ">
+                    <span style="font-weight: 600; font-size: 1rem;">
+                        {app_heading}
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
         with st.container(border=True):
             # --- Username / Password fields ---
