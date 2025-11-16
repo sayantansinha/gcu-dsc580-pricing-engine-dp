@@ -1,5 +1,5 @@
-resource "aws_cloudwatch_log_group" "app" {
-  name              = "/${local.app_prefix}/app"
-  retention_in_days = 7
+resource "aws_cloudwatch_log_group" "ppe-app-lg" {
+  name              = "${local.app_prefix}-app-lg"
+  retention_in_days = 1
   tags              = local.tags
 }

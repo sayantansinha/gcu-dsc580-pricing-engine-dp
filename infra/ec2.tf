@@ -10,9 +10,24 @@ resource "aws_instance" "ppe_ec2" {
   user_data = <<-EOF
     #!/bin/bash
     set -euo pipefail
+
+    # Basic updates and SSM agent
     dnf -y update || true
-    dnf -y install python3.11 python3.11-pip amazon-ssm-agent
+    dnf -y install python3.11 python3.11-pip amazon-ssm-agent amazon-cloudwatch-agent
     systemctl enable --now amazon-ssm-agent
+
+    # Write CloudWatch Agent config
+    mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
+    cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CONFIGEOF'
+    ${local.ppe_cloudwatch_agent_config}
+    CONFIGEOF
+
+    # Start CloudWatch Agent
+    /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop || true
+    /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+      -a start \
+      -m ec2 \
+      -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
   EOF
 
   tags = merge(local.tags, {

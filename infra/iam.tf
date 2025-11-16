@@ -4,7 +4,7 @@ data "aws_iam_policy_document" "ec2_trust" {
     actions = ["sts:AssumeRole"]
 
     principals {
-      type        = "Service"
+      type = "Service"
       identifiers = ["ec2.amazonaws.com"]
     }
   }
@@ -24,12 +24,12 @@ resource "aws_iam_instance_profile" "ec2_profile" {
 # Tight S3 RW policy for just your buckets
 data "aws_iam_policy_document" "s3_rw" {
   statement {
-    actions   = ["s3:ListAllMyBuckets"]
+    actions = ["s3:ListAllMyBuckets"]
     resources = ["*"]
   }
 
   statement {
-    actions   = ["s3:GetBucketLocation", "s3:ListBucket"]
+    actions = ["s3:GetBucketLocation", "s3:ListBucket"]
     resources = [for b in local.buckets_all : "arn:aws:s3:::${b}"]
   }
 
@@ -51,6 +51,34 @@ resource "aws_iam_policy" "s3_rw" {
   tags   = local.tags
 }
 
+# CloudWatch IAM Policy
+resource "aws_iam_policy" "cloudwatch_logs_policy" {
+  name        = "${local.app_prefix}-cw-logs-policy"
+  description = "Allow EC2 to send app logs to CloudWatch Logs"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams"
+        ]
+        Resource = "${aws_cloudwatch_log_group.ppe-app-lg.arn}:*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:DescribeLogGroups"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy_attachment" "s3_rw_attach" {
   role       = aws_iam_role.ec2_role.name
   policy_arn = aws_iam_policy.s3_rw.arn
@@ -62,12 +90,12 @@ resource "aws_iam_role_policy_attachment" "ssm_core" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-resource "aws_iam_role_policy_attachment" "cw_logs" {
-  role       = aws_iam_role.ec2_role.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
-}
-
 resource "aws_iam_role_policy_attachment" "ssm_read" {
   role       = aws_iam_role.ec2_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "cloudwatch_logs" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = aws_iam_policy.cloudwatch_logs_policy.arn
 }
