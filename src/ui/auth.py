@@ -50,7 +50,7 @@ def require_login():
 
     # ----- simple vertical centering (push card down) -----
     st.markdown(
-        "<div style='height: 18vh'></div>",
+        "<div style='height: 15vh'></div>",
         unsafe_allow_html=True,
     )
 
