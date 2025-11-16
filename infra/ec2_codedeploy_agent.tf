@@ -31,7 +31,7 @@ resource "aws_ssm_association" "install_codedeploy_to_instance" {
   name = aws_ssm_document.install_codedeploy.name
 
   targets {
-    key    = "InstanceIds"
+    key = "InstanceIds"
     values = [aws_instance.ppe_ec2.id]
   }
 }

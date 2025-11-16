@@ -8,6 +8,10 @@ locals {
   # AMI
   ppe_ami = "ami-0452b7e389989a376"
 
+  # # Domain
+  # root_domain = "mipuba.com"
+  # ppe_domain = "ppe.${local.root_domain}"
+
   # Buckets (Free-Tier eligible)
   raw_bucket             = "${local.app_prefix}-poc-raw"
   processed_bucket       = "${local.app_prefix}-poc-processed"
