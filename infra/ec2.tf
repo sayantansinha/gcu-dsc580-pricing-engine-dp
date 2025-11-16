@@ -22,8 +22,7 @@ resource "aws_ssm_association" "ppe_cloudwatch_setup" {
   }
 
   parameters = {
-    commands = [
-      <<-EOC
+    commands = <<-EOC
           #!/bin/bash
           set -x
 
@@ -60,7 +59,7 @@ resource "aws_ssm_association" "ppe_cloudwatch_setup" {
           /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a start -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json || true
 
       EOC
-    ]
+
   }
 }
 
