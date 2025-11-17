@@ -18,6 +18,7 @@ FEATURE_MASTER_FILENAME = "feature_master_" + datetime.now().strftime("%Y%m%d_%H
 
 
 def _load_df_from_cache(raw_path: str) -> pd.DataFrame:
+    LOGGER.info(f"Loading raw data from {raw_path}")
     cache_key = f"_raw_preview::{raw_path}"
     if cache_key in st.session_state:
         return st.session_state[cache_key]
@@ -28,6 +29,7 @@ def _load_df_from_cache(raw_path: str) -> pd.DataFrame:
 
 def label_staged_raw_files() -> Tuple[List, Dict[str, pd.DataFrame]]:
     staged_labels = list(st.session_state["staged_raw"].keys())
+    LOGGER.info(f"Staged raw file labels: {staged_labels}")
     st.session_state["staged_files_count"] = len(staged_labels)
     label_to_df: Dict[str, pd.DataFrame] = {}
     for lbl in staged_labels:

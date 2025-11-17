@@ -45,6 +45,7 @@ def _quick_checks(df: pd.DataFrame) -> dict:
 
 
 def _add_staged(label: str, raw_path: str) -> None:
+    LOGGER.info(f"Adding session state [staged_raw] :: label [{label}], raw [{raw_path}]")
     st.session_state["staged_raw"][label] = raw_path
 
 
@@ -71,6 +72,7 @@ def render():
                         _add_staged(label, full_path)
                         staged_now += 1
             if staged_now:
+                LOGGER.info(f"Staged raw file: {staged_now}")
                 st.info(f"Auto-staged {staged_now} RAW file(s) for run {run_id}.")
         except Exception as e:
             LOGGER.exception("Auto-stage failed")
@@ -116,14 +118,17 @@ def render():
                     st.error(f"Failed to load URL: {e}")
 
     if not st.session_state["staged_raw"]:
+        LOGGER.info("No staged raw files")
         st.session_state["staged_files_count"] = 0
         st.info("No staged sources yet. Upload/add URLs or pick from RAW.")
     else:
         # Data Insights for each staged RAW file
         st.subheader("Data Insights (staged files)")
         _, label_to_df = label_staged_raw_files()
+        LOGGER.info(f"label_to_df :: [{label_to_df}]")
         for lbl, df in label_to_df.items():
             checks = _quick_checks(df)
+            LOGGER.info(f"Label [{lbl}] :: check result :: [{checks}]")
             with st.container(border=True):
                 st.caption(f"{lbl} — {checks['rows']} rows, {checks['cols']} cols")
                 tab_nan, tab_dtypes, tab_preview = st.tabs(["Percentage NaNs (10)", "Dtypes", "Preview"])

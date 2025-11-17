@@ -22,6 +22,7 @@ AKAS_SIG = {"title", "region", "language", "types"}
 
 
 def _guess_role(name: str, df: pd.DataFrame) -> Optional[str]:
+    LOGGER.info(f"Guessing role: {name}")
     lname = name.lower()
     cols = set(map(str, df.columns))
     if "basics" in lname or BASICS_SIG & cols:
@@ -33,7 +34,12 @@ def _guess_role(name: str, df: pd.DataFrame) -> Optional[str]:
     return None  # base
 
 
-def _auto_defaults(staged_labels: list[str], label_to_df: dict[str, pd.DataFrame]) -> dict[str, Optional[str]]:
+def _auto_defaults(
+        staged_labels: list[str],
+        label_to_df: dict[str,
+        pd.DataFrame]
+) -> dict[str, Optional[str]]:
+    LOGGER.info(f"Setting default using Staged labels: {staged_labels}")
     defaults = {"base": None, "basics": None, "ratings": None, "akas": None}
     for lbl in staged_labels:
         role = _guess_role(lbl, label_to_df[lbl])
@@ -69,6 +75,7 @@ def render():
     st.caption("File Mapping for Feature Master")
 
     if not st.session_state["staged_raw"]:
+        LOGGER.info("No staged raw data")
         st.session_state["last_feature_master_path"] = None
         st.info("No staged sources yet. Load data files first.")
     else:
