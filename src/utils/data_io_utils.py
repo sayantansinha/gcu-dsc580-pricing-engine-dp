@@ -339,3 +339,83 @@ def list_runs() -> List[RunInfo]:
         [(ri.run_id, ri.has_raw, ri.has_feature_master, ri.has_feature_master_cleaned, ri.has_model) for ri in infos],
     )
     return infos
+
+
+# -----------------------------
+# Model artifacts
+# -----------------------------
+def model_run_exists(run_id: str) -> bool:
+    """
+    True if there is *any* model artifact for this run_id,
+    abstracting over LOCAL vs S3.
+    """
+    if _is_s3():
+        bucket = getattr(SETTINGS, "MODELS_BUCKET", None)
+        if not bucket:
+            LOGGER.warning("MODELS_BUCKET is not configured; model_run_exists → False")
+            return False
+        prefix = f"{run_id.strip('/')}/"
+        keys = list_bucket_objects(bucket, prefix=prefix)
+        exists = len(keys) > 0
+        LOGGER.info(f"model_run_exists(S3) run_id={run_id} → {exists} (keys={len(keys)})")
+        return exists
+    else:
+        models_dir = Path(SETTINGS.MODELS_DIR) / run_id
+        exists = models_dir.exists() and any(models_dir.iterdir())
+        LOGGER.info(f"model_run_exists(LOCAL) run_id={run_id} → {exists}")
+        return exists
+
+def load_model_csv(run_id: str, filename: str) -> Optional[pd.DataFrame]:
+    """
+    Load a CSV model artifact (predictions, per-model metrics) for a run_id.
+    Returns None if the file doesn't exist.
+    """
+    if _is_s3():
+        bucket = getattr(SETTINGS, "MODELS_BUCKET", None)
+        if not bucket:
+            LOGGER.warning("MODELS_BUCKET not configured; load_model_csv → None")
+            return None
+        key = f"{run_id.strip('/')}/{filename}"
+        try:
+            text = load_bucket_object(bucket, key, as_text=True)
+            return pd.read_csv(_io.StringIO(text))
+        except FileNotFoundError:
+            LOGGER.info(f"load_model_csv(S3) missing: s3://{bucket}/{key}")
+            return None
+        except Exception as ex:
+            LOGGER.exception(f"Error loading model CSV s3://{bucket}/{key}: {ex}")
+            raise
+    else:
+        path = Path(SETTINGS.MODELS_DIR) / run_id / filename
+        if not path.exists():
+            LOGGER.info(f"load_model_csv(LOCAL) missing: {path}")
+            return None
+        return pd.read_csv(path)
+
+def load_model_json(run_id: str, filename: str) -> Optional[dict]:
+    """
+    Load a JSON model artifact (ensemble summaries, params map) for a run_id.
+    Returns None if the file doesn't exist.
+    """
+    if _is_s3():
+        bucket = getattr(SETTINGS, "MODELS_BUCKET", None)
+        if not bucket:
+            LOGGER.warning("MODELS_BUCKET not configured; load_model_json → None")
+            return None
+        key = f"{run_id.strip('/')}/{filename}"
+        try:
+            text = load_bucket_object(bucket, key, as_text=True)
+            return json.loads(text)
+        except FileNotFoundError:
+            LOGGER.info(f"load_model_json(S3) missing: s3://{bucket}/{key}")
+            return None
+        except Exception as ex:
+            LOGGER.exception(f"Error loading model JSON s3://{bucket}/{key}: {ex}")
+            raise
+    else:
+        path = Path(SETTINGS.MODELS_DIR) / run_id / filename
+        if not path.exists():
+            LOGGER.info(f"load_model_json(LOCAL) missing: {path}")
+            return None
+        with open(path, "r") as f:
+            return json.load(f)
