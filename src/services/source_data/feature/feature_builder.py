@@ -1,10 +1,13 @@
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Tuple, List
+from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+from src.config.env_loader import SETTINGS
 from src.config.config_loader import load_config_from_file
 from src.utils.imdb_utils import load_imdb_core, load_imdb_akas, imdb_candidate_universe
 from src.utils.title_utils import normalize_title
@@ -17,12 +20,48 @@ LOGGER = get_logger("feature_builder")
 FEATURE_MASTER_FILENAME = "feature_master_" + datetime.now().strftime("%Y%m%d_%H%M")
 
 
+def _load_raw_from_identifier(identifier: str, base_dir: str | None = None) -> pd.DataFrame:
+    """
+    Wrapper around load_raw() that understands:
+      - LOCAL: full filesystem path
+      - S3: s3://bucket/prefix/file.parquet  OR  'run_id/file.parquet'  OR just 'file' + base_dir
+    """
+    # S3 backend
+    if SETTINGS.IO_BACKEND == "S3":
+        # Full s3:// URI -> parse bucket/key and derive base_dir + name
+        if identifier.startswith("s3://"):
+            parsed = urlparse(identifier)
+            key = parsed.path.lstrip("/")  # e.g. "20251117_123456/run_base.parquet"
+            if "/" in key:
+                derived_base_dir, file_part = key.split("/", 1)
+                base_dir_eff = derived_base_dir
+                name = Path(file_part).stem
+            else:
+                base_dir_eff = base_dir
+                name = Path(key).stem
+            return load_raw(name, base_dir=base_dir_eff)
+
+        # Key-style identifier like "20251117_123456/run_base.parquet"
+        if "/" in identifier and identifier.endswith(".parquet"):
+            # For keys, we let load_raw treat it as the key directly
+            return load_raw(identifier)
+
+        # Bare filename (no prefix) -> need base_dir
+        name = Path(identifier).stem
+        return load_raw(name, base_dir=base_dir)
+
+    # LOCAL backend: identifier is already a full path on disk
+    return load_raw(identifier)
+
+
 def _load_df_from_cache(raw_path: str) -> pd.DataFrame:
     LOGGER.info(f"Loading raw data from {raw_path}")
     cache_key = f"_raw_preview::{raw_path}"
     if cache_key in st.session_state:
         return st.session_state[cache_key]
-    df = load_raw(raw_path)
+
+    # Use unified loader (handles LOCAL paths and S3 URIs/keys)
+    df = _load_raw_from_identifier(raw_path)
     st.session_state[cache_key] = df
     return df
 
@@ -73,7 +112,10 @@ def build_features(
         imdb_akas_filename: str
 ):
     # Load base (synthetic)
-    base = load_raw(base_filename)
+    # - LOCAL: base_filename is a full path (unchanged behavior)
+    # - S3: base_filename may be a full s3:// URI, a key like "run_id/file.parquet",
+    #       or just a bare name; base_dir is the run_id.
+    base = _load_raw_from_identifier(base_filename, base_dir=base_dir)
     validate_columns_exist_in_dataframe(base, ["license_id", "title", "release_year"], "Synthetic base")
     LOGGER.info("Synthetic base file read and validated")
 
