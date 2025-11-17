@@ -1,9 +1,10 @@
 import _io
 import json
 import os
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 import pandas as pd
 import requests
@@ -20,6 +21,14 @@ from src.utils.s3_utils import (
 )
 
 LOGGER = get_logger("data_io_utils")
+
+@dataclass
+class RunInfo:
+    run_id: str
+    has_raw: bool = False
+    has_feature_master: bool = False
+    has_feature_master_cleaned: bool = False
+    has_model: bool = False
 
 # -----------------------------
 # Helpers: resolve where to write/read
@@ -225,3 +234,108 @@ def latest_file_under_directory(
             return None
         files.sort(key=lambda p: p.name, reverse=True)
         return str(files[0])
+
+
+# -----------------------------
+# List run
+# -----------------------------
+def list_runs() -> List[RunInfo]:
+    """
+    Collect run-level metadata for all runs, abstracting over LOCAL vs S3.
+
+    - In LOCAL mode:
+        RAW_DIR/<run_id>/...
+        PROCESSED_DIR/<run_id>/feature_master*.parquet
+        MODELS_DIR/<run_id>/...
+
+    - In S3 mode:
+        RAW_BUCKET:        <run_id>/...
+        PROCESSED_BUCKET:  <run_id>/feature_master*.parquet
+        MODELS_BUCKET:     <run_id>/...
+    """
+    info_by_id: Dict[str, RunInfo] = {}
+
+    def _get(run_id: str) -> RunInfo:
+        if run_id not in info_by_id:
+            info_by_id[run_id] = RunInfo(run_id=run_id)
+        return info_by_id[run_id]
+
+    if _is_s3():
+        # ---------- RAW ----------
+        if SETTINGS.RAW_BUCKET:
+            for key in list_bucket_objects(SETTINGS.RAW_BUCKET, prefix=""):
+                parts = key.split("/")
+                if len(parts) < 2:
+                    continue
+                run_id = parts[0]
+                _get(run_id).has_raw = True
+
+        # ---------- PROCESSED (feature master) ----------
+        if SETTINGS.PROCESSED_BUCKET:
+            for key in list_bucket_objects(SETTINGS.PROCESSED_BUCKET, prefix=""):
+                parts = key.split("/")
+                if len(parts) < 2:
+                    continue
+                run_id, filename = parts[0], parts[-1]
+                info = _get(run_id)
+                if filename.startswith("feature_master_cleaned_") and filename.endswith(".parquet"):
+                    info.has_feature_master_cleaned = True
+                elif filename.startswith("feature_master_") and filename.endswith(".parquet"):
+                    # Avoid double-counting cleaned as raw
+                    if "cleaned" not in filename:
+                        info.has_feature_master = True
+
+        # ---------- MODELS ----------
+        if getattr(SETTINGS, "MODELS_BUCKET", None):
+            for key in list_bucket_objects(SETTINGS.MODELS_BUCKET, prefix=""):
+                parts = key.split("/")
+                if len(parts) < 2:
+                    continue
+                run_id = parts[0]
+                _get(run_id).has_model = True
+
+    else:
+        raw_root = Path(SETTINGS.RAW_DIR)
+        proc_root = Path(SETTINGS.PROCESSED_DIR)
+        models_root = Path(getattr(SETTINGS, "MODELS_DIR", "")) if getattr(SETTINGS, "MODELS_DIR", None) else None
+
+        # ---------- RAW ----------
+        if raw_root.exists():
+            for run_dir in raw_root.iterdir():
+                if run_dir.is_dir() and any(run_dir.iterdir()):
+                    _get(run_dir.name).has_raw = True
+
+        # ---------- PROCESSED (feature master) ----------
+        if proc_root.exists():
+            for run_dir in proc_root.iterdir():
+                if not run_dir.is_dir():
+                    continue
+                run_id = run_dir.name
+                info = _get(run_id)
+
+                fm_clean = list(run_dir.glob("feature_master_cleaned_*.parquet"))
+                fm_raw = [
+                    p for p in run_dir.glob("feature_master_*.parquet")
+                    if "cleaned" not in p.name
+                ]
+
+                if fm_clean:
+                    info.has_feature_master_cleaned = True
+                if fm_raw:
+                    info.has_feature_master = True
+
+        # ---------- MODELS ----------
+        if models_root and models_root.exists():
+            for run_dir in models_root.iterdir():
+                if run_dir.is_dir() and any(run_dir.iterdir()):
+                    _get(run_dir.name).has_model = True
+
+    infos = list(info_by_id.values())
+    # Keep same ordering semantics as your old _list_runs
+    infos.sort(key=lambda ri: ri.run_id, reverse=True)
+    LOGGER.info(
+        "Run infos (%s backend) → %s",
+        "S3" if _is_s3() else "LOCAL",
+        [(ri.run_id, ri.has_raw, ri.has_feature_master, ri.has_feature_master_cleaned, ri.has_model) for ri in infos],
+    )
+    return infos
