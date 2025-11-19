@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict
+from urllib.parse import urlparse
 
 import fsspec
 import pyarrow as pa
@@ -106,17 +107,17 @@ def list_raw_files(base_dir: str) -> List[str]:
         return files
 
 
-def _read_parquet_head(path: str, n_rows: int = 100_000, columns=None) -> pd.DataFrame:
+def _read_parquet_head(path_or_file, n_rows: int = 50000, columns=None) -> pd.DataFrame:
     """
     Read only the first n_rows rows from a Parquet file efficiently.
+    Accepts a local path, S3 URL, or a file-like object.
     """
-    pf = pq.ParquetFile(path)
+    pf = pq.ParquetFile(path_or_file)
 
     tables = []
     rows_read = 0
 
     for rg_idx in range(pf.num_row_groups):
-        # read one row group at a time
         table = pf.read_row_group(rg_idx, columns=columns)
         tables.append(table)
         rows_read += table.num_rows
@@ -128,30 +129,51 @@ def _read_parquet_head(path: str, n_rows: int = 100_000, columns=None) -> pd.Dat
         return pd.DataFrame()
 
     combined = pa.concat_tables(tables)
-    # slice in case we overshot on the last row group
     combined = combined.slice(0, min(n_rows, combined.num_rows))
     return combined.to_pandas()
 
 
-def _read_parquet_head_from_url(url: str, n_rows: int = 100_000, columns=None):
+def _read_parquet_head_from_url(url: str, n_rows: int = 50000, columns=None) -> pd.DataFrame:
     with fsspec.open(url, "rb") as f:
         return _read_parquet_head(f, n_rows, columns)
 
 
-def save_from_url(url: str, base_dir: str) -> str:
+def save_from_url(url: str, base_dir: str, cap_n_rows: int = 50000) -> str:
+    """
+    Read from a remote URL (parquet, tsv/tsv.gz, or generic CSV),
+    optionally sampling only the first `sample_rows` rows, and save as raw parquet.
+    """
     try:
-        lower = url.lower()
         LOGGER.info(f"Reading data from URL: {url}")
-        base_name = Path(url).stem.replace(".tsv", "").replace(".gz", "") or "remote"
 
-        if lower.endswith((".parquet", ".pq")):
-            df = _read_parquet_head_from_url(url)
-        elif lower.endswith((".tsv.gz", ".tsv")):
-            df = pd.read_csv(url, sep="\t", compression="infer", na_values="\\N", low_memory=False)
+        # Strip query params for suffix detection and basename
+        parsed = urlparse(url)
+        path_only = parsed.path  # e.g. '/datasets/title.basics.tsv.gz'
+
+        lower_path = path_only.lower()
+        base_name = Path(path_only).stem.replace(".tsv", "").replace(".gz", "") or "remote"
+
+        if lower_path.endswith((".parquet", ".pq")):
+            df = _read_parquet_head_from_url(url, n_rows=cap_n_rows)
+        elif lower_path.endswith((".tsv.gz", ".tsv")):
+            LOGGER.info("Parsing TSV data from URL")
+            df = pd.read_csv(
+                url,
+                sep="\t",
+                compression="infer",
+                na_values="\\N",
+                low_memory=False,
+                nrows=cap_n_rows
+            )
         else:
+            LOGGER.info("Parsing text data from URL")
             r = requests.get(url, timeout=30)
             r.raise_for_status()
-            df = pd.read_csv(_io.StringIO(r.text))
+            df = pd.read_csv(
+                _io.StringIO(r.text),
+                low_memory=False,
+                nrows=cap_n_rows
+            )
 
         return save_raw(df, base_dir, base_name)
     except Exception as ex:
