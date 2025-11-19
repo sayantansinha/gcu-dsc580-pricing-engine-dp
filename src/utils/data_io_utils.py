@@ -6,6 +6,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict
 
+import fsspec
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pandas as pd
 import requests
 
@@ -22,6 +25,7 @@ from src.utils.s3_utils import (
 
 LOGGER = get_logger("data_io_utils")
 
+
 @dataclass
 class RunInfo:
     run_id: str
@@ -30,11 +34,13 @@ class RunInfo:
     has_feature_master_cleaned: bool = False
     has_model: bool = False
 
+
 # -----------------------------
 # Helpers: resolve where to write/read
 # -----------------------------
 def _is_s3() -> bool:
     return SETTINGS.IO_BACKEND == "S3"
+
 
 def _ensure_buckets():
     # idempotent
@@ -43,6 +49,7 @@ def _ensure_buckets():
         SETTINGS.FIGURES_BUCKET, SETTINGS.MODELS_BUCKET, SETTINGS.REPORTS_BUCKET
     ]):
         ensure_bucket(b)
+
 
 # -----------------------------
 # Raw data
@@ -66,6 +73,7 @@ def save_raw(df: pd.DataFrame, base_dir: str, name: str) -> str:
         LOGGER.info(f"Saved raw (LOCAL) → {path}")
         return path
 
+
 def load_raw(path_or_name: str, base_dir: Optional[str] = None) -> pd.DataFrame:
     """
     Load raw dataset. If S3, pass name without suffix + base_dir; if LOCAL, pass a full path.
@@ -79,6 +87,7 @@ def load_raw(path_or_name: str, base_dir: Optional[str] = None) -> pd.DataFrame:
         path = path_or_name
         LOGGER.info(f"Loading raw (LOCAL) ← {path}")
         return pd.read_parquet(path)
+
 
 def list_raw_files(base_dir: str) -> List[str]:
     if _is_s3():
@@ -96,6 +105,39 @@ def list_raw_files(base_dir: str) -> List[str]:
         LOGGER.info(f"Listing raw (LOCAL) {raw} => {files}")
         return files
 
+
+def _read_parquet_head(path: str, n_rows: int = 100_000, columns=None) -> pd.DataFrame:
+    """
+    Read only the first n_rows rows from a Parquet file efficiently.
+    """
+    pf = pq.ParquetFile(path)
+
+    tables = []
+    rows_read = 0
+
+    for rg_idx in range(pf.num_row_groups):
+        # read one row group at a time
+        table = pf.read_row_group(rg_idx, columns=columns)
+        tables.append(table)
+        rows_read += table.num_rows
+
+        if rows_read >= n_rows:
+            break
+
+    if not tables:
+        return pd.DataFrame()
+
+    combined = pa.concat_tables(tables)
+    # slice in case we overshot on the last row group
+    combined = combined.slice(0, min(n_rows, combined.num_rows))
+    return combined.to_pandas()
+
+
+def _read_parquet_head_from_url(url: str, n_rows: int = 100_000, columns=None):
+    with fsspec.open(url, "rb") as f:
+        return _read_parquet_head(f, n_rows, columns)
+
+
 def save_from_url(url: str, base_dir: str) -> str:
     try:
         lower = url.lower()
@@ -103,7 +145,7 @@ def save_from_url(url: str, base_dir: str) -> str:
         base_name = Path(url).stem.replace(".tsv", "").replace(".gz", "") or "remote"
 
         if lower.endswith((".parquet", ".pq")):
-            df = pd.read_parquet(url)
+            df = _read_parquet_head_from_url(url)
         elif lower.endswith((".tsv.gz", ".tsv")):
             df = pd.read_csv(url, sep="\t", compression="infer", na_values="\\N", low_memory=False)
         else:
@@ -116,6 +158,7 @@ def save_from_url(url: str, base_dir: str) -> str:
         error_text = f"Error reading file from {url}"
         LOGGER.exception(error_text)
         raise ValueError(error_text) from ex
+
 
 # -----------------------------
 # Processed data
@@ -135,6 +178,7 @@ def save_processed(df: pd.DataFrame, base_dir: str, name: str) -> str:
         LOGGER.info(f"Saved processed (LOCAL) → {path}")
         return path
 
+
 def load_processed(name: str, base_dir: str = None) -> pd.DataFrame:
     if _is_s3():
         name = name if name.endswith(".parquet") else f"{name}.parquet"
@@ -146,6 +190,7 @@ def load_processed(name: str, base_dir: str = None) -> pd.DataFrame:
         path = os.path.join(Path(SETTINGS.PROCESSED_DIR) / base_dir, name)
         LOGGER.info(f"Loading processed (LOCAL) ← {path}")
         return pd.read_parquet(path)
+
 
 # -----------------------------
 # Figures
@@ -169,6 +214,7 @@ def save_figure(fig, base_dir: str, name: str) -> str:
         fig.savefig(path, bbox_inches="tight")
         LOGGER.info(f"Saved figure (LOCAL) → {path}")
         return path
+
 
 # -----------------------------
 # Profiles / validation summaries
@@ -195,6 +241,7 @@ def save_profile(profile_obj: dict, base_dir: str, name: str) -> str:
             json.dump(profile_obj, f, indent=2)
         LOGGER.info(f"Saved profile (LOCAL) → {path}")
         return path
+
 
 # -----------------------------
 # Latest file under (LOCAL or S3)
@@ -365,6 +412,7 @@ def model_run_exists(run_id: str) -> bool:
         LOGGER.info(f"model_run_exists(LOCAL) run_id={run_id} → {exists}")
         return exists
 
+
 def load_model_csv(run_id: str, filename: str) -> Optional[pd.DataFrame]:
     """
     Load a CSV model artifact (predictions, per-model metrics) for a run_id.
@@ -391,6 +439,7 @@ def load_model_csv(run_id: str, filename: str) -> Optional[pd.DataFrame]:
             LOGGER.info(f"load_model_csv(LOCAL) missing: {path}")
             return None
         return pd.read_csv(path)
+
 
 def load_model_json(run_id: str, filename: str) -> Optional[dict]:
     """
