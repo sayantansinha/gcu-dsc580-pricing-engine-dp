@@ -1,5 +1,5 @@
-# Allow SSM to run a one-time install command after apply (optional convenience)
-resource "aws_ssm_document" "install_codedeploy" {
+# Allow SSM to run a one-time install command after apply
+resource "aws_ssm_document" "install_codedeploy_agent" {
   name          = "${local.app_prefix}-install-codedeploy"
   document_type = "Command"
   content = jsonencode({
@@ -28,7 +28,7 @@ resource "aws_ssm_document" "install_codedeploy" {
 }
 
 resource "aws_ssm_association" "install_codedeploy_to_instance" {
-  name = aws_ssm_document.install_codedeploy.name
+  name = aws_ssm_document.install_codedeploy_agent.name
 
   targets {
     key = "InstanceIds"
