@@ -218,24 +218,63 @@ def load_processed(name: str, base_dir: str = None) -> pd.DataFrame:
 # Figures
 # -----------------------------
 def save_figure(fig, base_dir: str, name: str) -> str:
+    """
+    Save a matplotlib figure either locally or to S3.
+
+    Returns:
+        LOCAL → filesystem path as str
+        S3    → s3://bucket/key URI
+    """
+    # normalise name so we don't end up with .png.png
+    if name.lower().endswith(".png"):
+        base_name = name
+    else:
+        base_name = f"{name}.png"
+
     if _is_s3():
         _ensure_buckets()
-        # Save to bytes, then PUT to S3
-        from io import BytesIO
+
         buf = BytesIO()
         fig.savefig(buf, bbox_inches="tight")
         buf.seek(0)
-        key = f"{base_dir.strip('/')}/{name}.png"
-        write_bucket_object(SETTINGS.FIGURES_BUCKET, key, buf.read(), content_type="image/png")
+
+        key = f"{base_dir.strip('/')}/{base_name}"
+        write_bucket_object(
+            SETTINGS.FIGURES_BUCKET,
+            key,
+            buf.read(),
+            content_type="image/png",
+        )
         uri = formulate_s3_uri(SETTINGS.FIGURES_BUCKET, key)
         LOGGER.info(f"Saved figure (S3) → {uri}")
         return uri
     else:
-        path = os.path.join(Path(SETTINGS.FIGURES_DIR) / base_dir, f"{name}.png")
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        path = Path(SETTINGS.FIGURES_DIR) / base_dir / base_name
+        path.parent.mkdir(parents=True, exist_ok=True)
         fig.savefig(path, bbox_inches="tight")
         LOGGER.info(f"Saved figure (LOCAL) → {path}")
-        return path
+        return str(path)
+
+
+def load_figure(path_or_uri: str):
+    """
+    Load a figure for display in Streamlit.
+
+    LOCAL:
+        returns a filesystem path (Streamlit will open it)
+    S3:
+        returns raw bytes that st.image can render
+    """
+    if isinstance(path_or_uri, str) and path_or_uri.startswith("s3://"):
+        try:
+            with fsspec.open(path_or_uri, "rb") as f:
+                data = f.read()
+            return data
+        except Exception as ex:
+            LOGGER.exception(f"Error loading figure from {path_or_uri}: {ex}")
+            raise
+    # for local paths, just return the string
+    return path_or_uri
 
 
 # -----------------------------

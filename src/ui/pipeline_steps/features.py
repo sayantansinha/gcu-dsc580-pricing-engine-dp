@@ -152,13 +152,13 @@ def render():
                 st.error(error_msg)
 
         # Display info for current feature master
-        # latest_fm = _latest_fm_for_run(run_id)
-        # st.markdown("---")
-        # if latest_fm:
-        #     st.session_state["last_feature_master_path"] = latest_fm
-        #     fm_name = os.path.basename(str(latest_fm))
-        #     st.success(f"Current Feature Master being used for subsequent steps: **{fm_name}**")
-        #     st.caption("Rebuild from staged RAW above if you want to replace it.")
-        # else:
-        #     st.session_state["last_feature_master_path"] = None
-        #     st.info("No Feature Master found, create one using the button above")
+        latest_fm = _latest_fm_for_run(run_id)
+        st.markdown("---")
+        if latest_fm:
+            st.session_state["last_feature_master_path"] = latest_fm
+            fm_name = os.path.basename(str(latest_fm))
+            st.success(f"Current Feature Master being used for subsequent steps: **{fm_name}**")
+            st.caption("Rebuild from staged RAW above if you want to replace it.")
+        else:
+            st.session_state["last_feature_master_path"] = None
+            st.info("No Feature Master found, create one using the button above")
