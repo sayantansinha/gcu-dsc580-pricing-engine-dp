@@ -1,23 +1,21 @@
 from __future__ import annotations
 
 import ast
-import json
 import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Final, Dict
 
-import joblib
 import pandas as pd
 import streamlit as st
 
-from src.config.env_loader import SETTINGS
 from src.services.analytics.modeling import (
     train_models_parallel,
     combine_average,
     combine_weighted_inverse_rmse, AVAILABLE_MODELS,
 )
 from src.ui.common import show_last_training_badge, store_last_model_info_in_session
+from src.utils.data_io_utils import save_model_artifacts
 from src.utils.log_utils import streamlit_safe, get_logger
 from ui.common import store_last_run_model_dir_in_session
 
@@ -81,51 +79,6 @@ def _multimodel_param_ui(selected_models: list[str]) -> dict[str, dict]:
             blocks[m] = _model_param_ui(m)
             # st.markdown("---")
     return blocks
-
-
-def _save_model_outputs(
-        base_out: dict,
-        comb_avg: dict,
-        comb_wgt_inv_rmse: dict,
-        params_map: dict,
-        y_true,
-        y_pred,
-        pred_src,
-        out_dir: Path
-):
-    # Save per-model metrics & ensemble summaries
-    pd.DataFrame(base_out["per_model_metrics"]).to_csv(out_dir / "per_model_metrics.csv", index=False)
-    with open(out_dir / "ensemble_avg.json", "w") as f:
-        # Remove 'pred' numpy array before saving to allow saving as json
-        comb_avg_to_save = {k: v for k, v in comb_avg.items() if k != "pred"}
-        json.dump(comb_avg_to_save, f, indent=2)
-    with open(out_dir / "ensemble_weighted.json", "w") as f:
-        # Remove 'pred' numpy array before saving to allow saving as json
-        comb_wgt_inv_rmse_to_save = {k: v for k, v in comb_wgt_inv_rmse.items() if k != "pred"}
-        json.dump(comb_wgt_inv_rmse_to_save, f, indent=2)
-
-    # Save predictions for diagnostics
-    pd.DataFrame(
-        {
-            "y_true": y_true,
-            "y_pred": y_pred,
-            "pred_source": pred_src
-        }
-    ).to_csv(out_dir / "predictions.csv", index=False)
-
-    # Hyperparams used
-    with open(out_dir / "params_map.json", "w") as f:
-        json.dump(params_map, f, indent=2)
-
-    # Fitted estimators
-    try:
-        if "models" in base_out and isinstance(base_out["models"], dict):
-            for name, est in base_out["models"].items():
-                joblib.dump(est, out_dir / f"{name}.joblib")
-    except Exception:
-        LOGGER.warning(f"Could not save fitted estimators to out_dir {out_dir}")
-
-    st.session_state["model_trained"] = True
 
 
 def _choose_display_pred(base_out, wgt, avg):
@@ -416,17 +369,17 @@ def render():
         st.json(wgt["metrics"])
 
         # Persist context
-        run_dir = Path(SETTINGS.MODELS_DIR) / run_id
-        run_dir.mkdir(parents=True, exist_ok=True)
-        _save_model_outputs(
-            base_train_out,
-            avg, wgt,
-            params_map,
-            y_true,
-            y_pred,
-            pred_src,
-            run_dir
+        artifact_location = save_model_artifacts(
+            run_id=run_id,
+            base_out=base_train_out,
+            comb_avg=avg,
+            comb_wgt_inv_rmse=wgt,
+            params_map=params_map,
+            y_true=y_true,
+            y_pred=y_pred,
+            pred_src=pred_src,
         )
+        st.session_state["model_trained"] = True
 
         store_last_model_info_in_session(
             base_train_out,
@@ -439,7 +392,7 @@ def render():
             selected_models
         )
 
-        store_last_run_model_dir_in_session(run_id, run_dir)
+        store_last_run_model_dir_in_session(artifact_location)
 
         st.success("Training and evaluation completed.")
 

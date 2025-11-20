@@ -453,6 +453,137 @@ def list_runs() -> List[RunInfo]:
 # -----------------------------
 # Model artifacts
 # -----------------------------
+def save_model_artifacts(
+        run_id: str,
+        base_out: Dict[str, Any],
+        comb_avg: Dict[str, Any],
+        comb_wgt_inv_rmse: Dict[str, Any],
+        params_map: Dict[str, Any],
+        y_true,
+        y_pred,
+        pred_src: str,
+) -> str:
+    """
+    Persist model artifacts for a run, abstracting over LOCAL vs S3.
+
+    Returns:
+        LOCAL → filesystem directory as str
+        S3    → s3://BUCKET/run_id/ prefix as a pseudo 'dir'
+    """
+    # ---- S3 backend ----
+    if _is_s3():
+        bucket = getattr(SETTINGS, "MODELS_BUCKET", None)
+        if not bucket:
+            LOGGER.warning("MODELS_BUCKET not configured; save_model_artifacts → no-op")
+            return ""
+
+        _ensure_buckets()
+        prefix = f"{run_id.strip('/')}/"
+
+        # per_model_metrics.csv
+        if "per_model_metrics" in base_out:
+            df_metrics = pd.DataFrame(base_out["per_model_metrics"])
+            write_bucket_object(
+                bucket,
+                f"{prefix}per_model_metrics.csv",
+                df_metrics.to_csv(index=False).encode("utf-8"),
+                content_type="text/csv",
+            )
+
+        # helper for JSON artifacts
+        def _write_json(obj: Dict[str, Any], filename: str):
+            write_bucket_object(
+                bucket,
+                f"{prefix}{filename}",
+                json.dumps(obj, indent=2).encode("utf-8"),
+                content_type="application/json",
+            )
+
+        # ensembles (drop raw preds so JSON is clean)
+        avg_to_save = {k: v for k, v in (comb_avg or {}).items() if k != "pred"}
+        wgt_to_save = {k: v for k, v in (comb_wgt_inv_rmse or {}).items() if k != "pred"}
+        _write_json(avg_to_save, "ensemble_avg.json")
+        _write_json(wgt_to_save, "ensemble_weighted.json")
+
+        # params map
+        _write_json(params_map or {}, "params_map.json")
+
+        # predictions.csv
+        df_pred = pd.DataFrame(
+            {
+                "y_true": y_true,
+                "y_pred": y_pred,
+                "pred_source": pred_src,
+            }
+        )
+        write_bucket_object(
+            bucket,
+            f"{prefix}predictions.csv",
+            df_pred.to_csv(index=False).encode("utf-8"),
+            content_type="text/csv",
+        )
+
+        # fitted estimators → .joblib
+        models = base_out.get("models") or base_out.get("fitted")
+        if isinstance(models, dict):
+            for name, est in models.items():
+                buf = BytesIO()
+                joblib.dump(est, buf)
+                buf.seek(0)
+                write_bucket_object(
+                    bucket,
+                    f"{prefix}{name}.joblib",
+                    buf.read(),
+                    content_type="application/octet-stream",
+                )
+
+        uri_prefix = formulate_s3_uri(bucket, prefix)
+        LOGGER.info("Saved model artifacts (S3) → %s", uri_prefix)
+        return uri_prefix
+
+    # ---- LOCAL backend ----
+    models_root = Path(getattr(SETTINGS, "MODELS_DIR", "models"))
+    out_dir = models_root / run_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # per-model metrics
+    pd.DataFrame(base_out["per_model_metrics"]).to_csv(out_dir / "per_model_metrics.csv", index=False)
+
+    # ensembles (drop raw preds)
+    avg_to_save = {k: v for k, v in (comb_avg or {}).items() if k != "pred"}
+    with open(out_dir / "ensemble_avg.json", "w", encoding="utf-8") as f:
+        json.dump(avg_to_save, f, indent=2)
+
+    wgt_to_save = {k: v for k, v in (comb_wgt_inv_rmse or {}).items() if k != "pred"}
+    with open(out_dir / "ensemble_weighted.json", "w", encoding="utf-8") as f:
+        json.dump(wgt_to_save, f, indent=2)
+
+    # predictions
+    pd.DataFrame(
+        {
+            "y_true": y_true,
+            "y_pred": y_pred,
+            "pred_source": pred_src,
+        }
+    ).to_csv(out_dir / "predictions.csv", index=False)
+
+    # params
+    with open(out_dir / "params_map.json", "w", encoding="utf-8") as f:
+        json.dump(params_map or {}, f, indent=2)
+
+    # fitted estimators
+    try:
+        models = base_out.get("models") or base_out.get("fitted")
+        if isinstance(models, dict):
+            for name, est in models.items():
+                joblib.dump(est, out_dir / f"{name}.joblib")
+    except Exception as ex:
+        LOGGER.warning("Could not save fitted estimators to %s: %s", out_dir, ex)
+
+    LOGGER.info("Saved model artifacts (LOCAL) → %s", out_dir)
+    return str(out_dir)
+
+
 def model_run_exists(run_id: str) -> bool:
     """
     True if there is *any* model artifact for this run_id,

@@ -170,10 +170,6 @@ def store_last_model_info_in_session(
     }
 
 
-def store_last_run_model_dir_in_session(run_id: str, run_dir: Path = None):
+def store_last_run_model_dir_in_session(run_dir: str = None):
     """Store the last run model directory location for display"""
-    if SETTINGS.IO_BACKEND == "S3":
-        display_path = f"s3://{SETTINGS.MODELS_BUCKET}/{run_id}"
-    else:
-        display_path = str(run_dir) if run_dir else Path(SETTINGS.MODELS_DIR) / run_id
-    st.session_state["last_model_run_dir"] = display_path
+    st.session_state["last_model_run_dir"] = run_dir
