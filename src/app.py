@@ -15,7 +15,11 @@ from src.utils.log_utils import handle_streamlit_exception, get_logger
 sys.excepthook = handle_streamlit_exception
 LOGGER = get_logger("app")
 
-st.set_page_config(page_title="Predictive Pricing Engine", layout="wide")
+st.set_page_config(
+    page_title="Predictive Pricing Engine",
+    page_icon="ui/assets/logo.svg",
+    layout="wide"
+)
 
 # dev mode: ensure css changes triggers an automatic reload
 ctx = get_script_run_ctx()

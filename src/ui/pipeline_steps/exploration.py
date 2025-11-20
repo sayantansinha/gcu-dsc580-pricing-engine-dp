@@ -46,7 +46,7 @@ def _viz_numeric_cat(df, run_id):
             bins = st.slider("Bins", 5, 100, 30, key="hist_bins")
             if st.button("Plot histogram"):
                 p = plot_hist(df, c, run_id, bins=bins)
-                st.image(p, caption=os.path.basename(p))
+                _display_figure(p, context="histogram")
         elif chart == "Boxplot":
             if not num_cols:
                 st.info("No numeric columns.")
@@ -54,13 +54,13 @@ def _viz_numeric_cat(df, run_id):
             c = st.selectbox("Column", num_cols, key="box_col")
             if st.button("Plot boxplot"):
                 p = plot_box(df, c, run_id)
-                st.image(p, caption=os.path.basename(p))
+                _display_figure(p, context="boxplot")
         elif chart == "Bar":
             cat = st.selectbox("Category", cat_cols or all_cols, key="bar_cat")
             val = st.selectbox("Aggregate (optional numeric)", [None] + num_cols, key="bar_val")
             if st.button("Plot bar"):
                 p = plot_bar(df, cat, val, run_id)
-                st.image(p, caption=os.path.basename(p))
+                _display_figure(p, context="bar chart")
         else:
             if len(num_cols) < 2:
                 st.info("Need at least two numeric columns.")
@@ -69,7 +69,7 @@ def _viz_numeric_cat(df, run_id):
             y = st.selectbox("Y", num_cols, key="scatter_y")
             if st.button("Plot scatter"):
                 p = plot_scatter(df, x, y, run_id)
-                st.image(p, caption=os.path.basename(p))
+                _display_figure(p, context="scatter")
     except Exception as e:
         LOGGER.exception(
             "Error in Visualization – Numeric/Categorical tab for run_id=%s",
@@ -95,12 +95,12 @@ def _viz_datetime(df, run_id):
             freq = st.selectbox("Frequency", ["D", "W", "M", "Q", "Y"], index=2, key="dt_counts_freq")
             if st.button("Plot counts over time"):
                 p = plot_datetime_counts(df, dc, run_id, freq=freq)
-                st.image(p, caption=os.path.basename(p))
+                _display_figure(p, context="daily counts")
         elif choice == "Time-of-day":
             dc = st.selectbox("Datetime column", dt_cols, key="dt_hour_col")
             if st.button("Plot hour histogram"):
                 p = plot_time_of_day_hist(df, dc, run_id)
-                st.image(p, caption=os.path.basename(p))
+                _display_figure(p, context="hour-of-day histogram")
         else:
             dc = st.selectbox("Datetime column", dt_cols, key="dt_month_col")
             num_cols = df.select_dtypes(include="number").columns.tolist()
@@ -110,7 +110,7 @@ def _viz_datetime(df, run_id):
             vc = st.selectbox("Numeric value", num_cols, key="dt_month_val")
             if st.button("Plot month boxplot"):
                 p = plot_month_box(df, dc, vc, run_id)
-                st.image(p, caption=os.path.basename(p))
+                _display_figure(p, context="month boxplot")
     except Exception as e:
         LOGGER.exception(
             "Error in Visualization – Datetime tab for run_id=%s",
