@@ -660,3 +660,129 @@ def load_model_json(run_id: str, filename: str) -> Optional[dict]:
             return None
         with open(path, "r") as f:
             return json.load(f)
+
+
+# -----------------------------
+# Reports (PDF)
+# -----------------------------
+def save_report_pdf(base_dir: str, name: str, pdf_bytes: bytes) -> str:
+    """
+    Save a PDF report either locally or to S3.
+
+    Args:
+        base_dir: run_id or logical subdirectory under reports root.
+        name: filename WITHOUT extension ('.pdf' will be added).
+        pdf_bytes: raw PDF bytes.
+
+    Returns:
+        LOCAL → filesystem path as str
+        S3    → s3://bucket/key URI
+    """
+    filename = f"{name}.pdf"
+
+    if _is_s3():
+        _ensure_buckets()
+        bucket = getattr(SETTINGS, "REPORTS_BUCKET", None)
+        if not bucket:
+            LOGGER.warning("REPORTS_BUCKET not configured; save_report_pdf → no-op")
+            return ""
+
+        key = f"{base_dir.strip('/')}/{filename}"
+        write_bucket_object(
+            bucket,
+            key,
+            pdf_bytes,
+            content_type="application/pdf",
+        )
+        uri = formulate_s3_uri(bucket, key)
+        LOGGER.info("Saved report (S3) → %s", uri)
+        return uri
+    else:
+        out_path = Path(SETTINGS.REPORTS_DIR) / base_dir / filename
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "wb") as f:
+            f.write(pdf_bytes)
+        LOGGER.info("Saved report (LOCAL) → %s", out_path)
+        return str(out_path)
+
+
+def latest_report_for_run(
+        run_id: str,
+        prefix: str = "report_",
+        suffix: str = ".pdf",
+) -> Optional[str]:
+    """
+    Find the latest report for a run_id.
+
+    Returns:
+        LOCAL → filesystem path as str
+        S3    → s3://bucket/key URI
+        None  → if nothing found
+    """
+    if _is_s3():
+        bucket = getattr(SETTINGS, "REPORTS_BUCKET", None)
+        if not bucket:
+            LOGGER.warning("REPORTS_BUCKET not configured; latest_report_for_run → None")
+            return None
+
+        base_prefix = run_id.strip("/")
+        search = f"{base_prefix}/{prefix}".strip("/")
+
+        keys = [
+            k for k in list_bucket_objects(bucket, search)
+            if k.startswith(search) and k.endswith(suffix)
+        ]
+        if not keys:
+            LOGGER.info("No report keys under s3://%s/%s", bucket, base_prefix)
+            return None
+
+        keys.sort(reverse=True)
+        latest_key = keys[0]
+        return formulate_s3_uri(bucket, latest_key)
+    else:
+        reports_dir = Path(SETTINGS.REPORTS_DIR) / run_id
+        if not reports_dir.exists():
+            LOGGER.info("Reports dir for run_id %s does not exist: %s", run_id, reports_dir)
+            return None
+
+        files = [
+            p for p in reports_dir.iterdir()
+            if p.is_file() and p.name.startswith(prefix) and p.suffix == suffix
+        ]
+        if not files:
+            LOGGER.info("No report files found under %s", reports_dir)
+            return None
+
+        files.sort(key=lambda p: p.name, reverse=True)
+        return str(files[0])
+
+
+def load_report_for_download(path_or_ref: str) -> bytes:
+    """
+    Load a report (PDF) into bytes suitable for st.download_button.
+
+    Accepts:
+        - Local filesystem path
+        - s3://bucket/key URI
+        - The slightly-mangled 's3:/bucket/key' that comes from Path("s3://...")
+
+    Returns:
+        Raw PDF bytes.
+    """
+    ref = str(path_or_ref)
+
+    # Normalize the common 's3:/bucket/key' → 's3://bucket/key'
+    if ref.startswith("s3:/") and not ref.startswith("s3://"):
+        ref = "s3://" + ref[len("s3:/"):]
+
+    if ref.startswith("s3://"):
+        try:
+            with fsspec.open(ref, "rb") as f:
+                return f.read()
+        except Exception as ex:
+            LOGGER.exception("Error loading report from %s: %s", ref, ex)
+            raise
+    else:
+        p = Path(ref)
+        with open(p, "rb") as f:
+            return f.read()

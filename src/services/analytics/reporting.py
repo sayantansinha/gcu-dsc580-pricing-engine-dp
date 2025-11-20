@@ -5,10 +5,10 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from io import BytesIO
 from pathlib import Path
 from typing import List, Dict, Optional
-
+import html as _html_mod  # for HTML entity unescape
+import pytz  # for timezone-aware formatting
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -19,16 +19,7 @@ from reportlab.platypus import (
 )
 
 from src.config.env_loader import SETTINGS
-
-try:
-    import html as _html_mod  # for HTML entity unescape
-except Exception:  # pragma: no cover
-    _html_mod = None
-
-try:
-    import pytz  # for timezone-aware formatting
-except Exception:  # pragma: no cover
-    pytz = None
+from src.utils.data_io_utils import save_report_pdf
 
 
 # =========================
@@ -93,7 +84,7 @@ def _html_table_from_mapping(d: Dict[str, object], table_class: str = "tbl") -> 
 def _html_table_from_records(recs: List[Dict[str, object]], table_class: str = "tbl") -> str:
     """Render a list[dict] as an HTML table."""
     if not recs:
-        return f"<div class='muted'>No data</div>"
+        return "<div class='muted'>No data</div>"
     # union of keys preserves order by first row, then add unseen keys
     keys = list(recs[0].keys())
     for r in recs[1:]:
@@ -459,7 +450,6 @@ def _html_to_story(html: str, page_width: float) -> List:
 
     # Walk parts; when we hit an H2 named 'Dataset Preview', start capturing into preview_story
     i = 0
-    capturing_preview = False
     while i < len(parts):
         chunk = parts[i]
         # Detect an <h2> and read its text
@@ -468,7 +458,6 @@ def _html_to_story(html: str, page_width: float) -> List:
             is_preview_h2 = ("dataset preview" in h2_txt.lower())
             if is_preview_h2:
                 # Start capturing this H2 and everything until the next H2 into preview_story
-                capturing_preview = True
                 _render_chunk(chunk, preview_story)  # the H2 itself
                 i += 1
                 # capture following chunks until next H2 or end
@@ -521,6 +510,11 @@ def df_to_table(df, max_rows: int = 25):
     return [tbl, Spacer(1, 8)]
 
 
+from io import BytesIO
+
+...
+
+
 def build_pdf_from_html(
         html_report: str,
         report_name: str,
@@ -528,24 +522,25 @@ def build_pdf_from_html(
         df_preview=None,  # optional DataFrame to include as a page
 ) -> str:
     """
-    Convert a **subset** of HTML (incl. tables & images) to a paginated PDF using ReportLab.
+    Convert a **subset** of HTML (incl. tables & images) to a paginated PDF using ReportLab,
+    then persist it via data_io_utils.save_report_pdf, abstracting over LOCAL vs S3.
 
     Args:
       html_report: HTML string you also render in Streamlit.
       report_name: file name without extension.
-      base_dir: subdir under SETTINGS.REPORTS_DIR (e.g., run_id) where PDF will be written.
+      base_dir: logical subdir / run_id where the report should be stored.
       df_preview: optional DataFrame for an extra 'Dataset Preview' page.
 
     Returns:
-      Absolute file path to written PDF.
+      LOCAL → filesystem path as str
+      S3    → s3://bucket/key URI
     """
-    out_dir = Path(SETTINGS.REPORTS_DIR) / str(base_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{report_name}.pdf"
+    # Build PDF into memory first
+    buf = BytesIO()
 
     left, right, top, bottom = (36, 36, 36, 36)
     doc = SimpleDocTemplate(
-        str(out_path),
+        buf,
         pagesize=letter,
         leftMargin=left, rightMargin=right, topMargin=top, bottomMargin=bottom,
     )
@@ -569,4 +564,9 @@ def build_pdf_from_html(
         canvas.restoreState()
 
     doc.build(story, onFirstPage=_numbered, onLaterPages=_numbered)
-    return str(out_path)
+
+    pdf_bytes = buf.getvalue()
+    buf.close()
+
+    # Persist via data_io_utils (LOCAL or S3)
+    return save_report_pdf(base_dir=base_dir, name=report_name, pdf_bytes=pdf_bytes)
