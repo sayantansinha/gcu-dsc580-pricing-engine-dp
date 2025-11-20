@@ -34,9 +34,10 @@ _BP_TEST_RES_KEYS = {"lm", "lm_pvalue", "f", "f_pvalue"}
 
 
 def _compare_model_selection_from_last_run(selected_models: list[str]):
-    last = st.session_state.get("last_model")["trained_models"]
-    if set(map(str, selected_models)) != set(map(str, last)):
-        st.info("Current model selection differs from the last trained set.")
+    if st.session_state.get("last_model"):
+        last = st.session_state.get("last_model")["trained_models"]
+        if set(map(str, selected_models)) != set(map(str, last)):
+            st.info("Current model selection differs from the last trained set.")
 
 
 def _numeric_columns(df: pd.DataFrame) -> list[str]:
