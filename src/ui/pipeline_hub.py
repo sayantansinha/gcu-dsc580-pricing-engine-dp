@@ -182,7 +182,7 @@ def _activate_model(run_id: str) -> bool:
         st.session_state["model_trained"] = True
         return True
     except Exception as e:
-        st.warning(f"Could not activate model run: {e}")
+        st.error("Could not activate model run, check logs for details")
         LOGGER.exception("Error in _activate_model", exc_info=e)
         return False
 
