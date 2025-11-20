@@ -9,7 +9,7 @@ import streamlit as st
 from src.config.env_loader import SETTINGS
 from src.ui.common import store_last_model_info_in_session, extract_last_trained_models
 from src.ui.pipeline_flow import render_pipeline_flow
-from src.ui.pipeline_steps import source_loader, features
+from src.ui.pipeline_steps import source_data_stager, features
 from src.ui.pipeline_steps.analytical_tools import render as render_models
 from src.ui.pipeline_steps.cleaning import render_cleaning_section
 from src.ui.pipeline_steps.display_data import render_display_section

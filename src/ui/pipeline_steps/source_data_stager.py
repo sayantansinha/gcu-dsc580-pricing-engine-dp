@@ -11,7 +11,7 @@ from src.ui.common import get_run_id_from_session_state
 from src.utils.data_io_utils import save_raw, list_raw_files, save_from_url
 from src.utils.log_utils import streamlit_safe, get_logger
 
-LOGGER = get_logger("source_data_stager")
+LOGGER = get_logger("ui_source_data_stager")
 
 REQUIRED_KEYS = ["title_id"]
 
@@ -124,10 +124,9 @@ def render():
         # Data Insights for each staged RAW file
         st.subheader("Data Insights (staged files)")
         _, label_to_df = label_staged_raw_files()
-        LOGGER.info(f"label_to_df :: [{label_to_df}]")
         for lbl, df in label_to_df.items():
             checks = _quick_checks(df)
-            LOGGER.info(f"Label [{lbl}] :: check result :: [{checks}]")
+            LOGGER.debug(f"Label [{lbl}] :: check result :: [{checks}]")
             with st.container(border=True):
                 st.caption(f"{lbl} — {checks['rows']} rows, {checks['cols']} cols")
                 tab_nan, tab_dtypes, tab_preview = st.tabs(["Percentage NaNs (10)", "Dtypes", "Preview"])
