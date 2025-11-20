@@ -119,45 +119,46 @@ def render():
                 akas_raw = st.session_state["staged_raw"][akas_label]
                 out = build_features(run_id, base_raw, basics_raw, ratings_raw, akas_raw)
                 if isinstance(out, str):
-                    st.session_state["last_feature_master_path"] = out
-                    try:
+                    # st.session_state["last_feature_master_path"] = out
+                    # try:
                         # Extract file name in order to pass through common method
-                        if SETTINGS.IO_BACKEND == "S3":
+                        # if SETTINGS.IO_BACKEND == "S3":
                             # out is an S3 URI like s3://bucket/run_id/feature_master_*.parquet
-                            parsed = urlparse(out)
-                            key_path = parsed.path.lstrip("/")
-                            fname = Path(key_path).name
-                            name_no_ext = Path(fname).stem
-                        else:
-                            name_no_ext = Path(out).stem
+                            # parsed = urlparse(out)
+                            # key_path = parsed.path.lstrip("/")
+                            # fname = Path(key_path).name
+                            # name_no_ext = Path(fname).stem
+                        # else:
+                            # name_no_ext = Path(out).stem
 
                         # use common helper to load data into session state
-                        df = load_processed(name_no_ext, base_dir=run_id)
-                        st.session_state["df"] = df
+                        # df = load_processed(name_no_ext, base_dir=run_id)
+                        # st.session_state["df"] = df
 
-                        success_msg_txt = f"Feature master created: {os.path.basename(str(out))}"
-                        LOGGER.info(success_msg_txt)
-                        st.success(success_msg_txt)
-                    except Exception as e:
-                        LOGGER.exception("Feature master saved but could not be loaded back", exc_info=e)
-                        st.warning(f"Feature master created but could not be loaded for preview: {e}")
+                    success_msg_txt = f"Feature master created: {os.path.basename(str(out))}"
+                    LOGGER.info(success_msg_txt)
+                    st.success(success_msg_txt)
+                    # except Exception as e:
+                    #     LOGGER.exception("Feature master saved but could not be loaded back", exc_info=e)
+                    #     st.warning(f"Feature master created but could not be loaded for preview: {e}")
                 elif isinstance(out, pd.DataFrame):
-                    saved = _save_feature_master(out, run_id)
-                    st.success(f"Feature master created and set for subsequent use: {os.path.basename(saved)}")
+                    out = _save_feature_master(out, run_id)
+                    st.success(f"Feature master created and set for subsequent use: {os.path.basename(out)}")
                 else:
                     st.warning("Builder did not return a valid parquet/DataFrame output.")
-            except Exception as e:
-                LOGGER.exception("Failed to build feature master")
-                st.error(f"Feature build failed: {e}")
+            except Exception:
+                error_msg = "Feature build failed"
+                LOGGER.exception(error_msg)
+                st.error(error_msg)
 
         # Display info for current feature master
-        latest_fm = _latest_fm_for_run(run_id)
-        st.markdown("---")
-        if latest_fm:
-            st.session_state["last_feature_master_path"] = latest_fm
-            fm_name = os.path.basename(str(latest_fm))
-            st.success(f"Current Feature Master being used for subsequent steps: **{fm_name}**")
-            st.caption("Rebuild from staged RAW above if you want to replace it.")
-        else:
-            st.session_state["last_feature_master_path"] = None
-            st.info("No Feature Master found, create one using the button above")
+        # latest_fm = _latest_fm_for_run(run_id)
+        # st.markdown("---")
+        # if latest_fm:
+        #     st.session_state["last_feature_master_path"] = latest_fm
+        #     fm_name = os.path.basename(str(latest_fm))
+        #     st.success(f"Current Feature Master being used for subsequent steps: **{fm_name}**")
+        #     st.caption("Rebuild from staged RAW above if you want to replace it.")
+        # else:
+        #     st.session_state["last_feature_master_path"] = None
+        #     st.info("No Feature Master found, create one using the button above")
