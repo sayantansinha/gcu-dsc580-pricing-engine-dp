@@ -19,6 +19,7 @@ from src.services.analytics.modeling import (
 )
 from src.ui.common import show_last_training_badge, store_last_model_info_in_session
 from src.utils.log_utils import streamlit_safe, get_logger
+from ui.common import store_last_run_model_dir_in_session
 
 LOGGER = get_logger("ui_analytical_tools")
 PRED_SRC_DISP_NAMES: Final[Dict[str, str]] = {
@@ -437,7 +438,9 @@ def render():
             params_map,
             selected_models
         )
-        st.session_state["last_model_run_dir"] = run_dir
+
+        store_last_run_model_dir_in_session(run_id, run_dir)
+
         st.success("Training and evaluation completed.")
 
     _show_last_model_stats()

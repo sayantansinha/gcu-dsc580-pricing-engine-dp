@@ -8,7 +8,8 @@ import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
 
 from src.config.env_loader import SETTINGS
-from src.ui.common import store_last_model_info_in_session, extract_last_trained_models
+from src.ui.common import store_last_model_info_in_session, extract_last_trained_models, \
+    store_last_run_model_dir_in_session
 from src.ui.pipeline_flow import render_pipeline_flow
 from src.ui.pipeline_steps import source_data_stager, features
 from src.ui.pipeline_steps.analytical_tools import render as render_models
@@ -175,10 +176,11 @@ def _activate_model(run_id: str) -> bool:
             params_map,
             trained_models,
         )
-        st.session_state["last_model_run_dir"] = run_id
+
+        store_last_run_model_dir_in_session(run_id)
+
         st.session_state["model_trained"] = True
         return True
-
     except Exception as e:
         st.warning(f"Could not activate model run: {e}")
         LOGGER.exception("Error in _activate_model", exc_info=e)

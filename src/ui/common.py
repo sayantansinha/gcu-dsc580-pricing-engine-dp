@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from config.env_loader import SETTINGS
 from src.utils.log_utils import get_logger
 
 LOGGER = get_logger("ui_common")
@@ -167,3 +168,12 @@ def store_last_model_info_in_session(
         "params_map": params_map,
         "trained_models": trained_models
     }
+
+
+def store_last_run_model_dir_in_session(run_id: str, run_dir: Path = None):
+    """Store the last run model directory location for display"""
+    if SETTINGS.IO_BACKEND == "S3":
+        display_path = f"s3://{SETTINGS.MODELS_BUCKET}/{run_id}"
+    else:
+        display_path = str(run_dir) if run_dir else Path(SETTINGS.MODELS_DIR) / run_id
+    st.session_state["last_model_run_dir"] = display_path
