@@ -1,6 +1,5 @@
 import os
 
-import pandas as pd
 import streamlit as st
 
 from src.services.source_data.analytics.eda import eda_summary
@@ -32,53 +31,50 @@ def _display_figure(path_or_uri: str, *, context: str) -> None:
         )
 
 
-def _viz_numeric_cat(df: pd.DataFrame, run_id: str) -> None:
+def _viz_numeric_cat(df, run_id):
     try:
-        st.subheader("Numeric and Categorical Visualizations")
+        all_cols = df.columns.tolist()
+        num_cols = df.select_dtypes(include="number").columns.tolist()
+        cat_cols = [c for c in all_cols if c not in num_cols]
 
-        num_cols = list(df.select_dtypes(include="number").columns)
-        cat_cols = [c for c in df.columns if c not in num_cols]
-
-        if not num_cols:
-            st.info("No numeric columns available for visualization.")
-            return
-
-        col_left, col_right = st.columns(2)
-
-        # Left column: hist / box
-        with col_left:
-            nc = st.selectbox("Numeric column", num_cols, key="viz_num_col")
-            bins = st.slider("Histogram bins", 10, 100, 30, key="viz_num_bins")
-
-            if st.button("Plot histogram", key="btn_hist"):
-                p = plot_hist(df, nc, run_id, bins=bins)
-                _display_figure(p, context="histogram")
-
-            if st.button("Plot boxplot", key="btn_box"):
-                p = plot_box(df, nc, run_id)
-                _display_figure(p, context="boxplot")
-
-        # Right column: bar / scatter
-        with col_right:
-            if cat_cols:
-                cc = st.selectbox("Categorical column for bar chart", cat_cols, key="viz_cat_col")
-                if st.button("Plot bar chart", key="btn_bar"):
-                    p = plot_bar(df, cc, run_id)
-                    _display_figure(p, context="bar chart")
-            else:
-                st.caption("No non-numeric columns available for bar charts.")
-
-            if len(num_cols) >= 2:
-                x_col = st.selectbox("Scatter X (numeric)", num_cols, key="viz_scatter_x")
-                y_col = st.selectbox("Scatter Y (numeric)", num_cols, key="viz_scatter_y")
-                if st.button("Plot scatter", key="btn_scatter"):
-                    p = plot_scatter(df, x_col, y_col, run_id)
-                    _display_figure(p, context="scatter")
-            else:
-                st.caption("Need at least two numeric columns for scatter plot.")
+        chart = st.selectbox("Chart type", ["Histogram", "Boxplot", "Bar", "Scatter"], key="viz_chart")
+        if chart == "Histogram":
+            if not num_cols:
+                st.info("No numeric columns.")
+                return
+            c = st.selectbox("Column", num_cols, key="hist_col")
+            bins = st.slider("Bins", 5, 100, 30, key="hist_bins")
+            if st.button("Plot histogram"):
+                p = plot_hist(df, c, run_id, bins=bins)
+                st.image(p, caption=os.path.basename(p))
+        elif chart == "Boxplot":
+            if not num_cols:
+                st.info("No numeric columns.")
+                return
+            c = st.selectbox("Column", num_cols, key="box_col")
+            if st.button("Plot boxplot"):
+                p = plot_box(df, c, run_id)
+                st.image(p, caption=os.path.basename(p))
+        elif chart == "Bar":
+            cat = st.selectbox("Category", cat_cols or all_cols, key="bar_cat")
+            val = st.selectbox("Aggregate (optional numeric)", [None] + num_cols, key="bar_val")
+            if st.button("Plot bar"):
+                p = plot_bar(df, cat, val, run_id)
+                st.image(p, caption=os.path.basename(p))
+        else:
+            if len(num_cols) < 2:
+                st.info("Need at least two numeric columns.")
+                return
+            x = st.selectbox("X", num_cols, key="scatter_x")
+            y = st.selectbox("Y", num_cols, key="scatter_y")
+            if st.button("Plot scatter"):
+                p = plot_scatter(df, x, y, run_id)
+                st.image(p, caption=os.path.basename(p))
     except Exception as e:
         LOGGER.exception(
-            "Error in Visualization – Numeric/Categorical tab for run_id=%s", run_id, exc_info=e
+            "Error in Visualization – Numeric/Categorical tab for run_id=%s",
+            run_id,
+            exc_info=e,
         )
         st.error(
             "An unexpected error occurred while generating numeric/categorical visualizations. "
@@ -86,39 +82,40 @@ def _viz_numeric_cat(df: pd.DataFrame, run_id: str) -> None:
         )
 
 
-def _viz_datetime(df: pd.DataFrame, run_id: str) -> None:
+def _viz_datetime(df, run_id):
     try:
-        st.subheader("Datetime Visualizations")
-
-        import pandas as pd
-
         dt_cols = df.select_dtypes(include=["datetime64[ns]", "datetimetz"]).columns.tolist()
         if not dt_cols:
-            st.info("No datetime columns available for visualization.")
+            st.info("No datetime columns detected.")
             return
 
-        dc = st.selectbox("Datetime column", dt_cols, key="viz_dt_col")
-
-        if st.button("Plot daily counts", key="btn_dt_counts"):
-            p = plot_datetime_counts(df, dc, run_id)
-            _display_figure(p, context="daily counts")
-
-        if st.button("Plot hour-of-day histogram", key="btn_dt_hour"):
-            p = plot_time_of_day_hist(df, dc, run_id)
-            _display_figure(p, context="hour-of-day histogram")
-
-        num_cols = list(df.select_dtypes(include="number").columns)
-        if not num_cols:
-            st.caption("No numeric columns available for month boxplot.")
-            return
-
-        vc = st.selectbox("Numeric value for month boxplot", num_cols, key="viz_dt_month_val")
-        if st.button("Plot month boxplot", key="btn_dt_month_box"):
-            p = plot_month_box(df, dc, vc, run_id)
-            _display_figure(p, context="month boxplot")
+        choice = st.selectbox("Datetime chart", ["Counts over time", "Time-of-day", "Value by month"], key="dt_choice")
+        if choice == "Counts over time":
+            dc = st.selectbox("Datetime column", dt_cols, key="dt_counts_col")
+            freq = st.selectbox("Frequency", ["D", "W", "M", "Q", "Y"], index=2, key="dt_counts_freq")
+            if st.button("Plot counts over time"):
+                p = plot_datetime_counts(df, dc, run_id, freq=freq)
+                st.image(p, caption=os.path.basename(p))
+        elif choice == "Time-of-day":
+            dc = st.selectbox("Datetime column", dt_cols, key="dt_hour_col")
+            if st.button("Plot hour histogram"):
+                p = plot_time_of_day_hist(df, dc, run_id)
+                st.image(p, caption=os.path.basename(p))
+        else:
+            dc = st.selectbox("Datetime column", dt_cols, key="dt_month_col")
+            num_cols = df.select_dtypes(include="number").columns.tolist()
+            if not num_cols:
+                st.info("Need a numeric value column for boxplot.")
+                return
+            vc = st.selectbox("Numeric value", num_cols, key="dt_month_val")
+            if st.button("Plot month boxplot"):
+                p = plot_month_box(df, dc, vc, run_id)
+                st.image(p, caption=os.path.basename(p))
     except Exception as e:
         LOGGER.exception(
-            "Error in Visualization – Datetime tab for run_id=%s", run_id, exc_info=e
+            "Error in Visualization – Datetime tab for run_id=%s",
+            run_id,
+            exc_info=e,
         )
         st.error(
             "An unexpected error occurred while generating datetime visualizations. "
