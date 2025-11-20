@@ -169,19 +169,35 @@ def delete_bucket_object(bucket: str, key: str):
     s3.delete_object(Bucket=bucket, Key=key, **_owner_dst())
 
 
-def load_bucket_object(bucket: str, key: str) -> pd.DataFrame:
+def load_bucket_object(bucket: str, key: str) -> Any:
     """
-    Load CSV/TSV/Parquet object into a DataFrame.
-    For Parquet we delegate to s3fs+pyarrow to avoid full in-memory body.
+    Load an S3 object into a Python object.
+
+    - *.parquet → pandas.DataFrame
+    - *.csv / *.tsv → pandas.DataFrame
+    - *.json → dict / list (parsed via json.loads)
     """
     k = key.lower()
+
+    # Parquet via s3fs
     if k.endswith(".parquet"):
         fs = fetch_s3fs()
         return pd.read_parquet(formulate_s3_uri(bucket, key), filesystem=fs)
-    # CSV/TSV path
+
+    # Generic object via GetObject
     params = {"Bucket": bucket, "Key": key, **_owner_dst()}
     obj = s3.get_object(**params)
     body = obj["Body"].read()
+
+    # JSON path
+    if k.endswith(".json"):
+        try:
+            return json.loads(body.decode("utf-8"))
+        except Exception as ex:
+            LOGGER.exception(f"Error parsing JSON for s3://{bucket}/{key}: {ex}")
+            raise
+
+    # CSV / TSV path → DataFrame
     sep = "\t" if k.endswith(".tsv") else ","
     return pd.read_csv(io.BytesIO(body), sep=sep)
 

@@ -619,8 +619,7 @@ def load_model_csv(run_id: str, filename: str) -> Optional[pd.DataFrame]:
             return None
         key = f"{run_id.strip('/')}/{filename}"
         try:
-            text = load_bucket_object(bucket, key, as_text=True)
-            return pd.read_csv(_io.StringIO(text))
+            return load_bucket_object(bucket, key)
         except FileNotFoundError:
             LOGGER.info(f"load_model_csv(S3) missing: s3://{bucket}/{key}")
             return None
@@ -647,8 +646,7 @@ def load_model_json(run_id: str, filename: str) -> Optional[dict]:
             return None
         key = f"{run_id.strip('/')}/{filename}"
         try:
-            text = load_bucket_object(bucket, key, as_text=True)
-            return json.loads(text)
+            return load_bucket_object(bucket, key)
         except FileNotFoundError:
             LOGGER.info(f"load_model_json(S3) missing: s3://{bucket}/{key}")
             return None
