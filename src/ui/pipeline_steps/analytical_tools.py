@@ -176,24 +176,54 @@ def _split_bp_test_results_from_model_metrics(model_metrics: list):
     if not isinstance(model_metrics, list) or not model_metrics:
         return model_metrics, None
 
-    cleaned = []
+    cleaned: list[dict] = []
     bp_found = None
 
     for row in model_metrics:
         if not isinstance(row, dict):
             cleaned.append(row)
             continue
+
         row_copy = deepcopy(row)
         model_name = str(row_copy.get("model", "")).lower()
         is_lr = "linearregression" in model_name
 
-        # Prefer nested dict if present
-        nested_bp = row_copy.pop("bp", None) if is_lr and "bp" in row_copy else None
-        if is_lr and nested_bp is not None:
-            bp_found = {k.lower(): v for k, v in ast.literal_eval(nested_bp).items()}
+        # Pull out bp from LR row only
+        bp_val = row_copy.pop("bp", None) if is_lr and "bp" in row_copy else None
+
+        if is_lr and bp_val is not None:
+            parsed_bp = None
+
+            # Case 1: already a dict
+            if isinstance(bp_val, dict):
+                parsed_bp = {str(k).lower(): v for k, v in bp_val.items()}
+
+            # Case 2: stringified dict / tuple
+            elif isinstance(bp_val, str):
+                try:
+                    tmp = ast.literal_eval(bp_val)
+                except (ValueError, SyntaxError):
+                    LOGGER.warning("Could not parse BP string: %s", bp_val, exc_info=True)
+                    tmp = None
+
+                if isinstance(tmp, dict):
+                    parsed_bp = {str(k).lower(): v for k, v in tmp.items()}
+                elif isinstance(tmp, (list, tuple)) and len(tmp) >= 4:
+                    # assume (lm, lm_pvalue, f, f_pvalue)
+                    keys = ["lm", "lm_pvalue", "f", "f_pvalue"]
+                    parsed_bp = {k: tmp[i] for i, k in enumerate(keys)}
+
+            # Case 3: already a tuple/list of 4
+            elif isinstance(bp_val, (list, tuple)) and len(bp_val) >= 4:
+                keys = ["lm", "lm_pvalue", "f", "f_pvalue"]
+                parsed_bp = {k: bp_val[i] for i, k in enumerate(keys)}
+
+            if parsed_bp:
+                bp_found = parsed_bp
 
         cleaned.append(row_copy)
-    LOGGER.debug(f"BP object extracted [{bp_found}]]")
+
+    LOGGER.debug("BP object extracted [%s]", bp_found)
     return cleaned, bp_found
 
 
