@@ -273,7 +273,8 @@ def _convert_model_metrics_to_df(model_metrics: list) -> pd.DataFrame:
         df[col] = df[col].map(_format_val)
 
     # Remove 'bp' from display
-    df = df.drop(columns=["bp"])
+    if "bp" in df.columns:
+        df = df.drop(columns=["bp"])
 
     # put 'model' as index if present
     if "model" in df.columns:
