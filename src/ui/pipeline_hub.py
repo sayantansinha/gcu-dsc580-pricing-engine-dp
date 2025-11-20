@@ -242,7 +242,7 @@ def render():
 
     # Stage Sources
     with st.expander("Data Staging", expanded=False):
-        source_loader.render()
+        source_data_stager.render()
 
     _render_flow_diagram()
 
