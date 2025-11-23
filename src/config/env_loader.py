@@ -1,4 +1,6 @@
+import ntpath
 import os
+import posixpath
 from dataclasses import dataclass, fields
 from pathlib import Path
 from dotenv import load_dotenv, find_dotenv
@@ -36,10 +38,20 @@ def _pjoin(*parts: str) -> str:
     for p in parts:
         if not p:
             continue
-        if p.startswith("/"):
-            # make it relative instead of absolute
-            p = p.lstrip("/")
+
+        # Detect absolute paths on ANY OS
+        is_abs = (
+                p.startswith("/")  # macOS / Linux absolute path
+                or ntpath.isabs(p)  # Windows absolute path
+                or posixpath.isabs(p)  # just in case Windows-style slash
+        )
+
+        # If absolute, strip to relative component
+        if is_abs:
+            p = Path(p).name  # keep only the last segment ("raw", "models", etc.)
+
         cleaned.append(p)
+
     return str(Path(*cleaned).resolve())
 
 
