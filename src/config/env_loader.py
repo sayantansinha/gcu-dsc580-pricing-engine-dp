@@ -8,6 +8,7 @@ from src.utils.log_utils import get_logger
 
 LOGGER = get_logger("env_loader")
 
+
 def load_env():
     # Load base '.env' if present
     base_env = find_dotenv(filename=".env", usecwd=True)
@@ -26,10 +27,21 @@ def load_env():
             if prof_env:
                 load_dotenv(prof_env, override=True)
 
+
 load_env()
 
+
 def _pjoin(*parts: str) -> str:
-    return str(Path(*[p for p in parts if p]).resolve())
+    cleaned = []
+    for p in parts:
+        if not p:
+            continue
+        if p.startswith("/"):
+            # make it relative instead of absolute
+            p = p.lstrip("/")
+        cleaned.append(p)
+    return str(Path(*cleaned).resolve())
+
 
 @dataclass
 class Settings:
@@ -61,6 +73,7 @@ class Settings:
     AWS_SECRET_ACCESS_KEY: str = getenv("AWS_SECRET_ACCESS_KEY")
     AWS_SESSION_TOKEN: str = getenv("AWS_SESSION_TOKEN")
 
+
 SETTINGS = Settings()
 
 # Ensure local dirs only when using LOCAL backend
@@ -68,9 +81,10 @@ if SETTINGS.IO_BACKEND == "LOCAL":
     for field in fields(Settings):
         name = field.name
         value = getattr(SETTINGS, name)
+        # Create directory if it does not exist
         if name.endswith("_DIR"):
             os.makedirs(value, exist_ok=True)
-        LOGGER.info(f"{name}: {value}")
+            LOGGER.info(f"{name}: {value}")
 else:
     for field in fields(Settings):
         LOGGER.info(f"{field.name}: {getattr(SETTINGS, field.name)}")
