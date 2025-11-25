@@ -272,7 +272,7 @@ def render():
                 basics_raw = st.session_state["staged_raw"][basics_label]
                 ratings_raw = st.session_state["staged_raw"][ratings_label]
                 akas_raw = st.session_state["staged_raw"][akas_label]
-                out = build_features(base_raw, basics_raw, ratings_raw, akas_raw)
+                out = build_features(run_id, base_raw, basics_raw, ratings_raw, akas_raw)
                 if isinstance(out, str) and os.path.exists(out):
                     st.session_state["last_feature_master_path"] = out
                     st.session_state["df"] = pd.read_parquet(out)
