@@ -32,7 +32,7 @@ python ${PROJECT_ROOT}/tools/simulate_licensing_data.py
 From the project root directory, run Streamlit:
 
 ```bash
-python -m streamlit run src/app.py
+python -m dotenv run -- python -m streamlit run src/app.py
 ```
 
 This will automatically start a local web server and open the app in your default browser.
