@@ -115,9 +115,10 @@ def load_active_cleaned_feature_master_from_session():
 
 
 def show_last_training_badge():
-    last_trained_models = st.session_state.get("last_model")["trained_models"]
-    if last_trained_models:
-        st.success(f"Last trained models: **{', '.join(last_trained_models)}**")
+    if st.session_state.get("last_model") is not None:
+        last_trained_models = st.session_state.get("last_model")["trained_models"]
+        if last_trained_models:
+            st.success(f"Last trained models: **{', '.join(last_trained_models)}**")
 
 
 def store_last_model_info_in_session(
