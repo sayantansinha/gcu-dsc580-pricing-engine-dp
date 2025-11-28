@@ -19,6 +19,7 @@ class Settings:
     PROCESSED_DIR: str = DATA_DIR + getenv("PROCESSED_DIR", "./data/processed")
     PROFILES_DIR: str = DATA_DIR + getenv("PROFILES_DIR", "./data/profiles")
     FIGURES_DIR: str = DATA_DIR + getenv("FIGURES_DIR", "./data/figures")
+    MODELS_DIR: str = DATA_DIR + getenv("MODELS_DIR", "./data/models")
     REPORTS_DIR: str = DATA_DIR + getenv("REPORTS_DIR", "./data/reports")
 
 

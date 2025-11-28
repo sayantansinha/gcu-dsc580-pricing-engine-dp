@@ -3,10 +3,13 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple
-
+from typing import Tuple, Optional
 import pandas as pd
 import requests
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from io import BytesIO
 
 from src.config.env_loader import SETTINGS
 from src.utils.log_utils import get_logger
@@ -123,18 +126,6 @@ def save_figure(fig, base_dir: str, name: str) -> str:
 
 
 # -----------------------------
-# Reports (HTML)
-# -----------------------------
-def save_reports(html: str, base_dir: str, report_name: str) -> str:
-    """Save HTML report to /data/public (derived from DATA_DIR)."""
-    path = os.path.join(Path(SETTINGS.DATA_DIR) / base_dir, f"{report_name}.html")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(html)
-    LOGGER.info(f"Saved HTML report → {path}")
-    return path
-
-
-# -----------------------------
 # Profiles / validation summaries
 # -----------------------------
 def save_profile(profile_obj: dict, base_dir: str, name: str) -> str:
@@ -145,3 +136,31 @@ def save_profile(profile_obj: dict, base_dir: str, name: str) -> str:
         json.dump(profile_obj, f, indent=2)
     LOGGER.info(f"Saved profile summary → {path}")
     return path
+
+
+# -----------------------------
+# Find latest under
+# -----------------------------
+def latest_file_under_directory(
+        prefix: str,
+        under_dir: Path,
+        suffix: str = ".parquet",
+        exclusion: str = None
+) -> Optional[Path]:
+    if not under_dir.exists():
+        LOGGER.warning(f"Directory {under_dir.name} doesn't exist")
+        return None
+
+    files = [p for p in under_dir.iterdir()
+             if p.is_file()
+             and p.name.startswith(prefix)
+             and p.suffix == suffix
+             and (exclusion is None or exclusion not in p.name)]
+
+    if not files:
+        LOGGER.warning(f"No files found under {under_dir.name} directory")
+        return None
+
+    LOGGER.debug(f"Found {len(files)} files under directory {under_dir.name} :: {files}")
+    files.sort(key=lambda p: p.name, reverse=True)
+    return files[0]

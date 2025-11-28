@@ -16,9 +16,10 @@ from src.config.env_loader import SETTINGS
 # -------------------------------------------------------------------
 APP_NAME = "Predictive Pricing Engine"
 _LOGO_PATHS = [
-    "src/assets/logo.svg",
+    "src/ui/assets/logo.svg",
+    "ui/assets/logo.svg",
     "assets/logo.svg",
-    "logo.svg",
+    "logo.svg"
 ]
 
 
@@ -69,9 +70,9 @@ def _infer_stage(run_id: str) -> str:
     raw_dir = Path(SETTINGS.RAW_DIR) / run_id
     proc_dir = Path(SETTINGS.PROCESSED_DIR) / run_id
     has_raw = raw_dir.exists() and any(raw_dir.iterdir())
-    fm_clean = list(proc_dir.glob("feature_master_clean_*.parquet"))
+    fm_clean = list(proc_dir.glob("feature_master_cleaned_*.parquet"))
     fm_raw = list(proc_dir.glob("feature_master_*.parquet"))
-    model_dir = proc_dir / "models"
+    model_dir = Path(SETTINGS.MODELS_DIR) / run_id
     has_model = model_dir.exists() and any(model_dir.iterdir())
     if has_model: return "MODELED"
     if fm_clean:  return "CLEANED"
@@ -109,7 +110,8 @@ def _ensure_run_dirs(run_id: str):
             Path(SETTINGS.PROCESSED_DIR),
             Path(SETTINGS.FIGURES_DIR),
             Path(SETTINGS.PROFILES_DIR),
-            Path(SETTINGS.REPORTS_DIR),
+            Path(SETTINGS.MODELS_DIR),
+            Path(SETTINGS.REPORTS_DIR)
     ):
         (root / run_id).mkdir(parents=True, exist_ok=True)
 

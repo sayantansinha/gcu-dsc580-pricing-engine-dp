@@ -2,6 +2,8 @@ import contextlib
 import os
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import streamlit as st
 
 from src.utils.log_utils import get_logger
@@ -20,11 +22,6 @@ def inject_css_from_file(css_path: str, rerun_on_first_load: bool = True):
     rerun_on_first_load : bool, default True
         Whether to perform a one-time rerun after first CSS injection
         (ensures proper styling on the very first load).
-    autorefresh : bool, default False
-        If True, watches the CSS file modification time and auto-reruns
-        once when the file changes (useful during development).
-    state_key_prefix : str, default "_menu_css"
-        Prefix for session state keys used internally.
     """
     state_key_prefix: str = "_css_injected"
     injected_key = f"{state_key_prefix}_injected"
@@ -95,3 +92,51 @@ def end_tab_scroll():
 def get_run_id_from_session_state() -> str:
     """Get Rub ID from the session"""
     return st.session_state["run_id"]
+
+
+def load_active_feature_master_from_session():
+    p = st.session_state.get("last_feature_master_path")
+
+    if not p and not os.path.exists(p):
+        LOGGER.warning("No active feature master found in session")
+        return None
+
+    return pd.read_parquet(p), os.path.basename(p)
+
+
+def load_active_cleaned_feature_master_from_session():
+    p = st.session_state.get("last_feature_master_path")
+
+    if not p or not os.path.exists(p):
+        LOGGER.warning("No active feature master found in session")
+        return None, None
+
+    return pd.read_parquet(p), os.path.basename(p)
+
+
+def show_last_training_badge():
+    last_trained_models = st.session_state.get("last_model")["trained_models"]
+    if last_trained_models:
+        st.success(f"Last trained models: **{', '.join(last_trained_models)}**")
+
+
+def store_last_model_info_in_session(
+        base: dict,
+        comb_avg: dict,
+        comb_wgt: dict,
+        y_true: np.ndarray,
+        y_pred: np.ndarray,
+        pred_source: str,
+        params_map: dict,
+        trained_models: list[str]
+):
+    st.session_state["last_model"] = {
+        "base": base,
+        "ensemble_avg": comb_avg,
+        "ensemble_wgt": comb_wgt,
+        "y_true": y_true,
+        "y_pred": y_pred,
+        "pred_source": pred_source,
+        "params_map": params_map,
+        "trained_models": trained_models
+    }
