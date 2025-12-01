@@ -172,28 +172,71 @@ def _split_bp_test_results_from_model_metrics(model_metrics: list):
     - find LR row (model name contains 'linear', case-insensitive),
     - extract BP (nested 'bp' OR flat keys),
     - return (cleaned_per_model_without_bp, bp_obj or None).
+
+    BP is expected to be:
+      - a dict (preferred),
+      - or a stringified dict / tuple that can be literal_eval'ed,
+      - or a 4-tuple/list.
     """
     if not isinstance(model_metrics, list) or not model_metrics:
         return model_metrics, None
 
-    cleaned = []
+    def _normalize_bp(bp_val):
+        """Coerce various bp representations into a dict with lowercase keys."""
+        if bp_val is None:
+            return None
+
+        # Already a dict
+        if isinstance(bp_val, dict):
+            return {str(k).lower(): v for k, v in bp_val.items()}
+
+        # String representation of a dict/tuple/list
+        if isinstance(bp_val, str):
+            try:
+                parsed = ast.literal_eval(bp_val)
+            except (ValueError, SyntaxError):
+                LOGGER.warning(f"Could not parse BP string: {bp_val!r}")
+                return None
+            return _normalize_bp(parsed)
+
+        # Tuple/list of four values
+        if isinstance(bp_val, (list, tuple)) and len(bp_val) >= 4:
+            lm, lmp, fstat, fp = bp_val[:4]
+            return {
+                "lm": lm,
+                "lm_pvalue": lmp,
+                "f": fstat,
+                "f_pvalue": fp,
+            }
+
+        # Anything else: we don't know how to normalize
+        LOGGER.warning(f"Unexpected BP value type: {type(bp_val)} -> {bp_val!r}")
+        return None
+
+    cleaned: list[dict] = []
     bp_found = None
 
     for row in model_metrics:
         if not isinstance(row, dict):
             cleaned.append(row)
             continue
+
         row_copy = deepcopy(row)
         model_name = str(row_copy.get("model", "")).lower()
         is_lr = "linearregression" in model_name
 
-        # Prefer nested dict if present
-        nested_bp = row_copy.pop("bp", None) if is_lr and "bp" in row_copy else None
-        if is_lr and nested_bp is not None:
-            bp_found = {k.lower(): v for k, v in ast.literal_eval(nested_bp).items()}
+        # Prefer nested 'bp' key for the linear model
+        nested_bp = None
+        if is_lr and "bp" in row_copy:
+            nested_bp = row_copy.pop("bp", None)
+
+        # Only try to parse BP once (first suitable LR row wins)
+        if is_lr and bp_found is None and nested_bp is not None:
+            bp_found = _normalize_bp(nested_bp)
 
         cleaned.append(row_copy)
-    LOGGER.debug(f"BP object extracted [{bp_found}]]")
+
+    LOGGER.debug(f"BP object extracted [{bp_found}]")
     return cleaned, bp_found
 
 
