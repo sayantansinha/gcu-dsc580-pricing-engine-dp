@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from config.env_loader import SETTINGS
 from src.utils.log_utils import get_logger
 
 LOGGER = get_logger("ui_common")
