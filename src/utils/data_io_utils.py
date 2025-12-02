@@ -708,7 +708,7 @@ def save_report_pdf(base_dir: str, name: str, pdf_bytes: bytes) -> str:
 
 def latest_report_for_run(
         run_id: str,
-        prefix: str = "report_",
+        prefix: str = "",
         suffix: str = ".pdf",
 ) -> Optional[str]:
     """
@@ -755,6 +755,55 @@ def latest_report_for_run(
 
         files.sort(key=lambda p: p.name, reverse=True)
         return str(files[0])
+
+
+def list_reports_for_run(run_id: str, suffix: str = ".pdf") -> List[str]:
+    """
+    List all report files for a given run_id.
+
+    Returns:
+        LOCAL → list of filesystem paths as str
+        S3    → list of s3://bucket/key URIs
+        []    → if nothing found
+    """
+    if _is_s3():
+        bucket = getattr(SETTINGS, "REPORTS_BUCKET", None)
+        if not bucket:
+            LOGGER.warning("REPORTS_BUCKET not configured; list_reports_for_run → []")
+            return []
+
+        base_prefix = run_id.strip("/")
+
+        # list all keys under this run_id prefix
+        try:
+            keys = [
+                k for k in list_bucket_objects(bucket, base_prefix)
+                if k.endswith(suffix)
+            ]
+        except Exception as ex:
+            LOGGER.exception("Error listing report objects for run_id %s: %s", run_id, ex)
+            return []
+
+        if not keys:
+            return []
+
+        keys.sort()  # alphabetical by name; your timestamps in filename will keep order
+        return [formulate_s3_uri(bucket, k) for k in keys]
+
+    # LOCAL backend
+    reports_dir = Path(SETTINGS.REPORTS_DIR) / run_id
+    if not reports_dir.exists():
+        return []
+
+    files = [
+        p for p in reports_dir.iterdir()
+        if p.is_file() and p.suffix == suffix
+    ]
+    if not files:
+        return []
+
+    files.sort(key=lambda p: p.name)
+    return [str(p) for p in files]
 
 
 def load_report_for_download(path_or_ref: str) -> bytes:

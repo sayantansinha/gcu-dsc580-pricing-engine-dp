@@ -155,9 +155,22 @@ def store_last_model_info_in_session(
         y_pred: np.ndarray,
         pred_source: str,
         params_map: dict,
-        trained_models: list[str]
+        trained_models: list[str],
+        model=None,
+        X_valid: pd.DataFrame | None = None,
+        y_valid: np.ndarray | None = None,
+        X_sample: pd.DataFrame | None = None,
 ):
-    st.session_state["last_model"] = {
+    """
+    Store the last trained-model information in session_state.
+
+    New optional fields:
+      - model   : fitted estimator chosen for explainability (e.g., best RMSE model)
+      - X_valid : validation feature matrix used for metrics / permutation importance
+      - y_valid : validation target (same as y_true in this context)
+      - X_sample: small feature subset for SHAP (to keep SHAP reasonably fast)
+    """
+    payload = {
         "base": base,
         "ensemble_avg": comb_avg,
         "ensemble_wgt": comb_wgt,
@@ -165,8 +178,20 @@ def store_last_model_info_in_session(
         "y_pred": y_pred,
         "pred_source": pred_source,
         "params_map": params_map,
-        "trained_models": trained_models
+        "trained_models": trained_models,
     }
+
+    # Only add explainability fields if they are present
+    if model is not None:
+        payload["model"] = model
+    if X_valid is not None:
+        payload["X_valid"] = X_valid
+    if y_valid is not None:
+        payload["y_valid"] = y_valid
+    if X_sample is not None:
+        payload["X_sample"] = X_sample
+
+    st.session_state["last_model"] = payload
 
 
 def store_last_run_model_dir_in_session(run_dir: str = None):

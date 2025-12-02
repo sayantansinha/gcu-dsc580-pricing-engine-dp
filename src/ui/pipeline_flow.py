@@ -56,7 +56,7 @@ def _flow_graphviz_dot(status_map: Dict[str, str]) -> str:
         "preprocessing": "Preprocessing (and Cleaning)",
         "analytical_tools": "Analytical Tools – Model",
         "visual_tools": "Visual Tools",
-        "report_generator": "Report Generator"
+        "report_generator": "Reporting"
     }
 
     steps = list(label_map.keys())
