@@ -81,7 +81,7 @@ def list_raw_files(base_dir: str) -> list[str]:
         raw = Path(SETTINGS.RAW_DIR) / base_dir
         if not os.path.isdir(raw):
             return []
-        files = [f for f in os.listdir(raw) if f.endswith(".parquet")]
+        files = [str(raw / f) for f in os.listdir(raw) if f.endswith(".parquet")]
         files.sort()
         LOGGER.info(f"Listing raw files in {raw} directory => {files}")
         return files
