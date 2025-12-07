@@ -44,7 +44,7 @@ locals {
         files = {
           collect_list = [
             {
-              file_path       = "/var/log/ppe-app/ppe-app.log"
+              file_path       = "/var/log/app/app.log"
               log_group_name  = aws_cloudwatch_log_group.ppe-app-lg.name
               log_stream_name = "{instance_id}"
               timezone        = "LOCAL"

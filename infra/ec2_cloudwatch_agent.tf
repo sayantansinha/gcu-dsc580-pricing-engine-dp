@@ -5,7 +5,7 @@ resource "aws_ssm_document" "cloudwatch_agent_setup" {
 
   content = jsonencode({
     schemaVersion = "2.2"
-    description   = "Install and configure CloudWatch Agent on PPE EC2"
+    description   = "Configure CloudWatch Agent on PPE EC2"
     mainSteps = [
       {
         action = "aws:runShellScript"
@@ -14,6 +14,7 @@ resource "aws_ssm_document" "cloudwatch_agent_setup" {
           runCommand = [
             # Turn on strict + verbose bash
             "set -euxo pipefail",
+
             # Log everything we do to a debug log
             "exec > >(tee -a /var/log/cwagent_setup.log) 2>&1",
 
