@@ -50,6 +50,7 @@ resource "aws_iam_policy" "gha_deploy_policy" {
         Action = [
           "codedeploy:CreateDeployment",
           "codedeploy:RegisterApplicationRevision",
+          "codedeploy:GetApplicationRevision",
           "codedeploy:GetDeployment",
           "codedeploy:GetDeploymentConfig",
           "codedeploy:GetApplication",
