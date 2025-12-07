@@ -6,7 +6,7 @@ locals {
   app_prefix = "ppe"
 
   # AMI
-  ppe_ami = "ami-00dd21db9cf92ef84"
+  ppe_ami = "ami-0ebda4230423eb2b4"
 
   # # Domain
   # root_domain = "mipuba.com"
@@ -26,11 +26,11 @@ locals {
     metrics = {
       metrics_collected = {
         mem = {
-          measurement = ["mem_used_percent"]
+          measurement                 = ["mem_used_percent"]
           metrics_collection_interval = 60
         }
         swap = {
-          measurement = ["swap_used_percent"]
+          measurement                 = ["swap_used_percent"]
           metrics_collection_interval = 60
         }
       }
