@@ -1,0 +1,15 @@
+[Unit]
+Description=PLI App
+After=network.target
+
+[Service]
+User=ec2-user
+WorkingDirectory=/opt/app
+Environment=ENV_FILE=/opt/app/aws.env
+ExecStart=/opt/app-venv/bin/python3.11 -m streamlit run src/app.py --server.port 8501 --server.address 0.0.0.0
+StandardOutput=append:/var/log/app/app.log
+StandardError=append:/var/log/app/app.log
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

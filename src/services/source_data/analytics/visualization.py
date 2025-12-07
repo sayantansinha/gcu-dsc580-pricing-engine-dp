@@ -16,7 +16,7 @@ def _as_datetime_series(obj, index=None) -> pd.Series:
 
 
 def _fig_name(run_id: str, name: str) -> str:
-    return f"{run_id}_{name}.png"
+    return f"{run_id}_{name}"
 
 
 # ---------- Numeric & Categorical plots ----------

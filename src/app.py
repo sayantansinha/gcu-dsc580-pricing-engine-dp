@@ -5,22 +5,28 @@ import sys
 import streamlit as st
 from streamlit.runtime.scriptrunner_utils.script_run_context import get_script_run_ctx
 
+from src.config.env_loader import SETTINGS
 from src.ui.common import inject_css_from_file
-from ui.menu import get_nav
-from ui.pipeline_hub import render as render_pipeline_hub
-from utils.log_utils import handle_streamlit_exception, get_logger
+from src.ui.auth import require_login
+from src.ui.menu import get_nav
+from src.ui.pipeline_hub import render as render_pipeline_hub
+from src.utils.log_utils import handle_streamlit_exception, get_logger
 
 sys.excepthook = handle_streamlit_exception
 LOGGER = get_logger("app")
 
-st.set_page_config(page_title="Predictive Pricing Engine", layout="wide")
+st.set_page_config(
+    page_title="Predictive Pricing Engine",
+    page_icon="ui/assets/logo.svg",
+    layout="wide"
+)
 
 # dev mode: ensure css changes triggers an automatic reload
 ctx = get_script_run_ctx()
 if ctx and ctx.session_id:
     inject_css_from_file("src/ui/styles/main_app.css")
 
-# --- session defaults: DO NOT set run_id here ---
+# --- session defaults ---
 for k, v in {
     "df": None,
     "run_id": None,
@@ -57,6 +63,15 @@ def _dispatch(page_key: str):
     ROUTES.get(page_key, _render_home)()
 
 
-# --- sidebar + route ---
-section, page_key = get_nav()  # sidebar always renders
-_dispatch(page_key)
+def main():
+    # --- auth gate ---
+    if SETTINGS.IO_BACKEND != "LOCAL":
+        require_login()
+
+    # --- sidebar + route ---
+    _, page_key = get_nav()
+    _dispatch(page_key)
+
+
+if __name__ == "__main__":
+    main()

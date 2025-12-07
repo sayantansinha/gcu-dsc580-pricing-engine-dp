@@ -10,6 +10,22 @@ from src.utils.log_utils import get_logger
 
 LOGGER = get_logger("ui_common")
 
+# App identity (logo + name)
+APP_NAME = "Predictive Pricing Engine"
+_LOGO_PATHS = [
+    "src/ui/assets/logo.svg",
+    "ui/assets/logo.svg",
+    "assets/logo.svg",
+    "logo.svg"
+]
+
+
+def logo_path() -> Path | None:
+    for p in _LOGO_PATHS:
+        if os.path.exists(p):
+            return Path(p)
+    return None
+
 
 def inject_css_from_file(css_path: str, rerun_on_first_load: bool = True):
     """
@@ -114,11 +130,21 @@ def load_active_cleaned_feature_master_from_session():
     return pd.read_parquet(p), os.path.basename(p)
 
 
-def show_last_training_badge():
-    if st.session_state.get("last_model") is not None:
+def extract_last_trained_models(formatted: bool = False):
+    if st.session_state.get("last_model"):
         last_trained_models = st.session_state.get("last_model")["trained_models"]
-        if last_trained_models:
-            st.success(f"Last trained models: **{', '.join(last_trained_models)}**")
+        if last_trained_models and formatted:
+            return ', '.join(last_trained_models)
+        else:
+            return last_trained_models
+    else:
+        return None
+
+
+def show_last_training_badge():
+    last_trained_models = extract_last_trained_models(True)
+    if last_trained_models:
+        st.success(f"Last trained models: **{last_trained_models}**")
 
 
 def store_last_model_info_in_session(
@@ -141,3 +167,8 @@ def store_last_model_info_in_session(
         "params_map": params_map,
         "trained_models": trained_models
     }
+
+
+def store_last_run_model_dir_in_session(run_dir: str = None):
+    """Store the last run model directory location for display"""
+    st.session_state["last_model_run_dir"] = run_dir

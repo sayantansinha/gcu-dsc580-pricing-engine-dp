@@ -4,6 +4,7 @@ import os
 import time
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import pandas as pd
 import streamlit as st
@@ -11,7 +12,7 @@ import streamlit as st
 from src.config.env_loader import SETTINGS
 from src.services.source_data.feature.feature_builder import label_staged_raw_files, build_features
 from src.ui.common import get_run_id_from_session_state
-from src.utils.data_io_utils import latest_file_under_directory, save_processed
+from src.utils.data_io_utils import latest_file_under_directory, save_processed, load_processed
 from src.utils.log_utils import get_logger, streamlit_safe
 
 LOGGER = get_logger("ui_features")
@@ -22,6 +23,7 @@ AKAS_SIG = {"title", "region", "language", "types"}
 
 
 def _guess_role(name: str, df: pd.DataFrame) -> Optional[str]:
+    LOGGER.debug(f"Guessing role, file name [{name}]")
     lname = name.lower()
     cols = set(map(str, df.columns))
     if "basics" in lname or BASICS_SIG & cols:
@@ -33,7 +35,12 @@ def _guess_role(name: str, df: pd.DataFrame) -> Optional[str]:
     return None  # base
 
 
-def _auto_defaults(staged_labels: list[str], label_to_df: dict[str, pd.DataFrame]) -> dict[str, Optional[str]]:
+def _auto_defaults(
+        staged_labels: list[str],
+        label_to_df: dict[str,
+        pd.DataFrame]
+) -> dict[str, Optional[str]]:
+    LOGGER.debug(f"Setting default using Staged labels: {staged_labels}")
     defaults = {"base": None, "basics": None, "ratings": None, "akas": None}
     for lbl in staged_labels:
         role = _guess_role(lbl, label_to_df[lbl])
@@ -59,8 +66,13 @@ def _save_feature_master(df: pd.DataFrame, run_id: str) -> str:
 
 
 def _latest_fm_for_run(run_id: str) -> Optional[Path]:
-    run_proc = Path(SETTINGS.PROCESSED_DIR) / run_id
-    return latest_file_under_directory("feature_master_", run_proc, exclusion="cleaned")
+    if SETTINGS.IO_BACKEND == "S3":
+        # For S3, under_dir acts like a prefix; so just the run_id
+        under_dir = Path(run_id)
+    else:
+        under_dir = Path(SETTINGS.PROCESSED_DIR) / run_id
+
+    return latest_file_under_directory("feature_master_", under_dir, exclusion="cleaned")
 
 
 @streamlit_safe
@@ -69,6 +81,7 @@ def render():
     st.caption("File Mapping for Feature Master")
 
     if not st.session_state["staged_raw"]:
+        LOGGER.info("No staged raw data")
         st.session_state["last_feature_master_path"] = None
         st.info("No staged sources yet. Load data files first.")
     else:
@@ -104,25 +117,47 @@ def render():
                 basics_raw = st.session_state["staged_raw"][basics_label]
                 ratings_raw = st.session_state["staged_raw"][ratings_label]
                 akas_raw = st.session_state["staged_raw"][akas_label]
-                out = build_features(base_raw, basics_raw, ratings_raw, akas_raw)
-                if isinstance(out, str) and os.path.exists(out):
-                    st.session_state["last_feature_master_path"] = out
-                    st.session_state["df"] = pd.read_parquet(out)
-                    st.success(f"Feature master created: {os.path.basename(out)}")
+                out = build_features(run_id, base_raw, basics_raw, ratings_raw, akas_raw)
+                if isinstance(out, str):
+                    # st.session_state["last_feature_master_path"] = out
+                    # try:
+                        # Extract file name in order to pass through common method
+                        # if SETTINGS.IO_BACKEND == "S3":
+                            # out is an S3 URI like s3://bucket/run_id/feature_master_*.parquet
+                            # parsed = urlparse(out)
+                            # key_path = parsed.path.lstrip("/")
+                            # fname = Path(key_path).name
+                            # name_no_ext = Path(fname).stem
+                        # else:
+                            # name_no_ext = Path(out).stem
+
+                        # use common helper to load data into session state
+                        # df = load_processed(name_no_ext, base_dir=run_id)
+                        # st.session_state["df"] = df
+
+                    success_msg_txt = f"Feature master created: {os.path.basename(str(out))}"
+                    LOGGER.info(success_msg_txt)
+                    st.success(success_msg_txt)
+                    # except Exception as e:
+                    #     LOGGER.exception("Feature master saved but could not be loaded back", exc_info=e)
+                    #     st.warning(f"Feature master created but could not be loaded for preview: {e}")
                 elif isinstance(out, pd.DataFrame):
-                    saved = _save_feature_master(out, run_id)
-                    st.success(f"Feature master created and set for subsequent use: {os.path.basename(saved)}")
+                    out = _save_feature_master(out, run_id)
+                    st.success(f"Feature master created and set for subsequent use: {os.path.basename(out)}")
                 else:
                     st.warning("Builder did not return a valid parquet/DataFrame output.")
-            except Exception as e:
-                st.error(f"Feature build failed: {e}")
+            except Exception:
+                error_msg = "Feature build failed"
+                LOGGER.exception(error_msg)
+                st.error(error_msg)
 
         # Display info for current feature master
         latest_fm = _latest_fm_for_run(run_id)
         st.markdown("---")
         if latest_fm:
             st.session_state["last_feature_master_path"] = latest_fm
-            st.success(f"Current Feature Master being used for subsequent steps: **{latest_fm.name}**")
+            fm_name = os.path.basename(str(latest_fm))
+            st.success(f"Current Feature Master being used for subsequent steps: **{fm_name}**")
             st.caption("Rebuild from staged RAW above if you want to replace it.")
         else:
             st.session_state["last_feature_master_path"] = None

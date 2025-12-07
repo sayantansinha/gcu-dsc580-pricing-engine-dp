@@ -119,7 +119,7 @@ def train_models_parallel(
         "y_valid": yva,
         "valid_preds": valid_preds,  # dict name -> np.ndarray
         "per_model_metrics": per_model_metrics,
-        "fitted": fitted,
+        "models": fitted
     }
 
 

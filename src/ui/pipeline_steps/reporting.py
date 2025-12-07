@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import time
 from pathlib import Path
@@ -6,21 +7,15 @@ from typing import Optional, Final
 
 import streamlit as st
 
-from src.config.env_loader import SETTINGS
 from src.services.analytics.reporting import Section, build_html_report, build_pdf_from_html
 from src.services.analytics.visual_tools import (
     chart_actual_vs_pred, chart_residuals, chart_residuals_qq
 )
 from src.ui.common import show_last_training_badge, load_active_cleaned_feature_master_from_session
-from src.utils.data_io_utils import latest_file_under_directory
+from src.utils.data_io_utils import latest_report_for_run, load_report_for_download
 
 REPORT_FILENAME_PREFIX: Final[str] = "report_"
 REPORT_FILENAME_EXT: Final[str] = ".pdf"
-
-
-def _latest_generated_report(run_id: str) -> Optional[Path]:
-    run_proc = Path(SETTINGS.REPORTS_DIR) / run_id
-    return latest_file_under_directory(REPORT_FILENAME_PREFIX, run_proc, suffix=".pdf")
 
 
 def _create_report_filename(report_name: str) -> str:
@@ -28,14 +23,45 @@ def _create_report_filename(report_name: str) -> str:
     return f"{REPORT_FILENAME_PREFIX}{report_name}_{ts}"
 
 
+def _latest_generated_report(run_id: str) -> Optional[str]:
+    """
+    Backend-agnostic wrapper.
+
+    LOCAL:
+      returns a filesystem path as string
+    S3:
+      returns an s3://bucket/key URI
+    """
+    return latest_report_for_run(run_id)
+
+
 def _show_download_button_for_report(report_path: Path) -> None:
-    with open(report_path, "rb") as f:
-        st.download_button(
-            "Download PDF",
-            data=f,
-            file_name=f"{report_path.name}",
-            mime="application/pdf"
-        )
+    """
+    Given a Path-like object (as used in render()), load the report bytes via
+    data_io_utils and expose a Streamlit download button.
+
+    Works for both LOCAL paths and S3 URIs (which may have been wrapped in Path()).
+    """
+    ref = str(report_path)
+
+    try:
+        data = load_report_for_download(ref)
+    except Exception as ex:
+        st.error(f"Unable to load report for download: {ex}")
+        return
+
+    # Derive filename for the download
+    if ref.startswith("s3://") or ref.startswith("s3:/"):
+        file_name = ref.rsplit("/", 1)[-1]
+    else:
+        file_name = report_path.name
+
+    st.download_button(
+        "Download PDF",
+        data=data,
+        file_name=file_name,
+        mime="application/pdf",
+    )
 
 
 def render():
@@ -72,7 +98,7 @@ def render():
         include_data = st.checkbox("Include dataset preview (first 20 rows)", value=True, disabled=df is None)
         include_plots = st.checkbox("Include diagnostic plots", value=True)
         include_perf = st.checkbox("Include model metrics & BP test", value=True)
-        report_name = st.text_input("Report name (no spaces)", value="pricing_engine")
+        report_name = st.text_input("Report name (no spaces)", value="pricing_engine_summary")
 
         if st.button("Generate Report", type="primary"):
             sections = []
@@ -115,5 +141,5 @@ def render():
         if latest_generated_report:
             st.session_state["report_generated"] = True
             st.markdown("---")
-            st.success(f"Report available for download: **{latest_generated_report.name}**")
-            _show_download_button_for_report(latest_generated_report)
+            st.success(f"Report available for download: **{latest_generated_report}**")
+            _show_download_button_for_report(Path(latest_generated_report))
