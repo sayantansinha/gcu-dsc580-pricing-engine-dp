@@ -13,7 +13,7 @@ hooks:
   AfterInstall:
     - location: deploy_scripts/install_service.sh
       timeout: 300
-      runas: ec2-user
+      runas: root
   ApplicationStart:
     - location: deploy_scripts/restart_service.sh
       timeout: 120
