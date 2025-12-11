@@ -16,10 +16,10 @@ from src.ui.pipeline_steps.analytical_tools import render as render_models
 from src.ui.pipeline_steps.cleaning import render_cleaning_section
 from src.ui.pipeline_steps.display_data import render_display_section
 from src.ui.pipeline_steps.exploration import render_exploration_section
-from src.ui.pipeline_steps.reporting import render as render_reports
+from src.ui.pipeline_steps.reporting import render_report as render_reports
 from src.ui.pipeline_steps.visual_tools import render as render_visuals
 from src.utils.data_io_utils import latest_file_under_directory, load_processed, model_run_exists, load_model_csv, \
-    load_model_json
+    load_model_json, latest_report_for_run
 from src.utils.log_utils import get_logger
 
 LOGGER = get_logger("pipeline_hub")
@@ -215,11 +215,26 @@ def _render_pipeline_state(
         pipeline_flow_slot: DeltaGenerator,
         fm_raw_path: Path | None,
         fm_clean_path: Path | None,
-        has_model: bool
+        has_model: bool,
+        run_id: str,
 ):
     """
     Render the pipeline state
     """
+    # Determine whether at least one report exists for this run.
+    report_generated_flag = bool(st.session_state.get("report_generated"))
+    if not report_generated_flag and has_model:
+        try:
+            # Any PDF under this run's reports directory / prefix counts
+            existing_ref = latest_report_for_run(run_id)
+            if existing_ref:
+                report_generated_flag = True
+                # keep session in sync so we don't re-probe unnecessarily
+                st.session_state["report_generated"] = True
+        except Exception:
+            # Don't break the hub if S3/local probing fails
+            pass
+
     ctx = {
         "files_staged": st.session_state.get("staged_files_count", 0) > 0,
         "feature_master_exists": st.session_state.get("last_feature_master_path") is not None,
@@ -227,7 +242,7 @@ def _render_pipeline_state(
         "eda_performed": st.session_state.get("eda_performed"),
         "preprocessing_performed": st.session_state.get("preprocessing_performed"),
         "model_trained": st.session_state.get("model_trained"),
-        "report_generated": st.session_state.get("report_generated"),
+        "report_generated": report_generated_flag,
     }
 
     with pipeline_flow_slot.container(border=True):
@@ -259,19 +274,19 @@ def render():
     pipeline_flow_slot = st.empty()
 
     # Render Pipeline state
-    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model)
+    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model, run_id)
 
     # Stage Sources
     with st.expander("Data Staging", expanded=False):
         source_data_stager.render()
 
-    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model)
+    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model, run_id)
 
     # Build Feature
     with st.expander("Feature Master", expanded=False):
         features.render()
 
-    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model)
+    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model, run_id)
 
     # Probe feature master before data exploration
     fm_raw_path, fm_clean_path = _probe_feature_master_artifacts(run_id)
@@ -289,7 +304,7 @@ def render():
             st.session_state["data_displayed"] = False
             st.info(user_msg)
 
-    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model)
+    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model, run_id)
 
     # Exploration (EDA)
     with st.expander("Exploration (EDA)", expanded=False):
@@ -301,7 +316,7 @@ def render():
             st.session_state["eda_performed"] = False
             st.info(user_msg)
 
-    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model)
+    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model, run_id)
 
     # Cleaning & Preprocessing
     with st.expander("Preprocessing (and Cleaning)", expanded=False):
@@ -312,7 +327,7 @@ def render():
             st.session_state["preprocessing_performed"] = False
             st.info(user_msg)
 
-    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model)
+    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model, run_id)
 
     # Re-probe after cleaning, only reading cleaned feature master
     _, fm_clean_path = _probe_feature_master_artifacts(run_id)
@@ -330,7 +345,7 @@ def render():
 
     # Re-probe after modeling and re-render flow diagram
     has_model = _probe_model_artifacts(run_id)
-    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model)
+    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model, run_id)
 
     # Visual Tools
     with st.expander("Visual Tools", expanded=False):
@@ -349,4 +364,4 @@ def render():
             st.session_state["report_generated"] = False
             st.info("Train a model to enable the report generator.")
 
-    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model)
+    _render_pipeline_state(pipeline_flow_slot, fm_raw_path, fm_clean_path, has_model, run_id)

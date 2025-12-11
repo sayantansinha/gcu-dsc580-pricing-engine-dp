@@ -5,204 +5,171 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
-from typing import List, Dict, Optional
-import html as _html_mod  # for HTML entity unescape
-import pytz  # for timezone-aware formatting
+from io import BytesIO
+from typing import List, Dict, Optional, Any
+
+import matplotlib.pyplot as plt
+import pytz
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak,
-    Table, TableStyle, Preformatted
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Image,
+    PageBreak,
+    Table,
+    TableStyle,
+    Preformatted,
 )
 
-from src.config.env_loader import SETTINGS
+from src.services.analytics.visual_tools import (
+    chart_actual_vs_pred,
+    chart_residuals,
+    chart_residuals_qq,
+)
 from src.utils.data_io_utils import save_report_pdf
+from src.utils.explain_utils import permutation_importance_scores, shap_summary_df
+from ui.common import APP_NAME
 
-
-# =========================
-# Public primitives
-# =========================
 
 @dataclass
 class Section:
     title: str
-    html: str  # HTML fragment to embed (table/img/p/headers/etc.)
+    html: str  # HTML fragment for this section
 
 
-def _format_human_ts(dt: Optional[datetime] = None, tz_name: str = "America/Los_Angeles") -> str:
-    """
-    Return timestamp like 'Nov 09, 2025 07:02 am' localized to tz_name if possible.
-    Falls back to local time if pytz unavailable.
-    """
-    dt = dt or datetime.now()
-    if pytz is not None:
-        try:
-            tz = pytz.timezone(tz_name)
-            dt = dt.astimezone(tz)
-        except Exception:
-            pass
-    s = dt.strftime("%b %d, %Y %I:%M %p")
-    # lower-case AM/PM to 'am'/'pm'
-    return s[:-2] + s[-2:].lower()
+# -------------------------------------------------------------------
+# Basic HTML helpers
+# -------------------------------------------------------------------
+
+def _format_human_ts() -> str:
+    """Return a localized timestamp like 'Nov 30, 2025 07:15 pm' in LA time."""
+    tz = pytz.timezone("America/Los_Angeles")
+    now = datetime.now(tz)
+    return now.strftime("%b %d, %Y %I:%M %p").lower()
 
 
-def _html_escape(s: str) -> str:
-    if _html_mod:
-        return _html_mod.escape(s)
-    # minimal fallback
-    return (
-        s.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
+def _html_escape(text: str) -> str:
+    import html
+    return html.escape(str(text), quote=True)
 
 
-def _html_unescape(s: str) -> str:
-    if _html_mod:
-        return _html_mod.unescape(s)
-    return s
+def _html_table_from_mapping(mapping: Dict[str, Any], table_class: str = "tbl") -> str:
+    """Render a simple 2-column HTML table from a dict."""
+    if not mapping:
+        return "<div class='muted'>No data available.</div>"
 
-
-def _html_table_from_mapping(d: Dict[str, object], table_class: str = "tbl") -> str:
-    """Render a dict as a 2-column HTML table (Key / Value)."""
     rows = []
-    for k, v in d.items():
+    for k, v in mapping.items():
+        key = _html_escape(k)
         if isinstance(v, (dict, list)):
-            # pretty-print nested structure, but escaped
-            v_str = _html_escape(json.dumps(v, indent=2))
-            v_html = f"<pre class='pre'>{v_str}</pre>"
+            val = _html_escape(json.dumps(v, indent=2))
+            cell = f"<pre>{val}</pre>"
         else:
-            v_html = _html_escape(str(v))
-        rows.append(f"<tr><th>{_html_escape(str(k))}</th><td>{v_html}</td></tr>")
-    return f"<table class='{table_class}'><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+            cell = _html_escape(v)
+        rows.append(f"<tr><th>{key}</th><td>{cell}</td></tr>")
+
+    return f"<table class='{table_class}'><tbody>{''.join(rows)}</tbody></table>"
 
 
-def _html_table_from_records(recs: List[Dict[str, object]], table_class: str = "tbl") -> str:
-    """Render a list[dict] as an HTML table."""
-    if not recs:
-        return "<div class='muted'>No data</div>"
-    # union of keys preserves order by first row, then add unseen keys
-    keys = list(recs[0].keys())
-    for r in recs[1:]:
-        for k in r.keys():
-            if k not in keys:
-                keys.append(k)
-    head = "".join(f"<th>{_html_escape(str(k))}</th>" for k in keys)
+def _html_table_from_records(records: List[Dict[str, Any]], table_class: str = "tbl") -> str:
+    """Render an HTML table from a list of dicts."""
+    if not records:
+        return "<div class='muted'>No data available.</div>"
+
+    cols: List[str] = []
+    for rec in records:
+        for k in rec:
+            if k not in cols:
+                cols.append(k)
+
+    head = "".join(f"<th>{_html_escape(c)}</th>" for c in cols)
     body_rows = []
-    for r in recs:
+    for rec in records:
         tds = []
-        for k in keys:
-            val = r.get(k, "")
-            if isinstance(val, float):
-                # simple numeric formatting
-                v = f"{val:,.4f}"
-            elif isinstance(val, (dict, list)):
-                v = f"<pre class='pre'>{_html_escape(json.dumps(val, indent=2))}</pre>"
+        for c in cols:
+            v = rec.get(c, "")
+            if isinstance(v, (dict, list)):
+                val = _html_escape(json.dumps(v, indent=2))
+                cell = f"<pre>{val}</pre>"
             else:
-                v = _html_escape(str(val))
-            tds.append(f"<td>{v}</td>")
+                cell = _html_escape(v)
+            tds.append(f"<td>{cell}</td>")
         body_rows.append(f"<tr>{''.join(tds)}</tr>")
+
     return f"<table class='{table_class}'><thead><tr>{head}</tr></thead><tbody>{''.join(body_rows)}</tbody></table>"
 
 
-def build_html_report(title: str, meta: Dict, sections: List[Section]) -> str:
+def build_html_report(title: str, meta: Dict[str, Any], sections: List[Section]) -> str:
     """
-    Build a complete HTML report page.
-
-    - Renders a formatted 'Generated' timestamp in America/Los_Angeles as 'MMM dd, yyyy hh:mm am/pm'
-    - Renders meta as a 2-column table (Field/Value) instead of raw JSON
-    - Includes simple table/typography CSS so tables look good in both browser & PDF
+    Build a full HTML page used both for on-screen display (if needed)
+    and for conversion into PDF.
     """
     gen_ts = _format_human_ts()
     meta_tbl = _html_table_from_mapping(meta)
 
     head = f"""<!doctype html>
-    <html>
-    <head>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title>{_html_escape(title)}</title>
-    <style>
-      body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color:#222; line-height:1.45; }}
-      h1 {{ margin: 0 0 8px 0; font-size: 22px; }}
-      h2 {{ margin: 20px 0 8px 0; font-size: 18px; border-bottom: 1px solid #e5e5e5; padding-bottom: 4px; }}
-      h3 {{ margin: 14px 0 6px 0; font-size: 16px; }}
-      .muted {{ color: #777; font-style: italic; }}
-      .meta {{ margin-top: 6px; margin-bottom: 18px; }}
-      .pre {{ white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace; font-size: 12px; background:#fafafa; padding:8px; border:1px solid #eee; border-radius:6px; }}
-      table.tbl {{ border-collapse: collapse; width: 100%; margin: 8px 0 16px 0; font-size: 13px; }}
-      table.tbl th, table.tbl td {{ border: 1px solid #e0e0e0; padding: 6px 8px; vertical-align: top; text-align: left; }}
-      table.tbl thead th {{ background: #f5f7fa; font-weight: 600; }}
-      table.tbl tbody tr:nth-child(even) {{ background: #fbfcff; }}
-    </style>
-    </head>
-    <body>
-    <h1>{_html_escape(title)}</h1>
-    <div class="meta"><strong>Generated:</strong> {gen_ts}</div>
-    {meta_tbl}
-    <hr/>
-    """
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>{_html_escape(title)}</title>
+<style>
+body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color:#222; line-height:1.45; }}
+h1 {{ margin: 0 0 8px 0; font-size: 22px; }}
+h2 {{ margin: 20px 0 8px 0; font-size: 18px; border-bottom: 1px solid #e5e5e5; padding-bottom: 4px; }}
+h3 {{ margin: 14px 0 6px 0; font-size: 16px; }}
+.meta {{ margin: 8px 0 16px 0; font-size: 12px; color:#555; }}
+table.tbl {{ border-collapse: collapse; border-spacing:0; margin: 6px 0 12px 0; font-size: 12px; }}
+table.tbl th, table.tbl td {{ border: 1px solid #ddd; padding: 4px 6px; vertical-align: top; }}
+table.tbl th {{ background:#f7f7f7; text-align:left; font-weight: 600; }}
+pre {{ background:#f8f8f8; padding: 6px 8px; font-size: 11px; overflow-x:auto; }}
+img {{ max-width: 100%; height:auto; margin: 6px 0 10px 0; }}
+.muted {{ color:#777; font-style:italic; }}
+</style>
+</head>
+<body>
+"""
+    body_parts = [
+        f"<h1>{_html_escape(title)}</h1>",
+        f"<div class='meta'><strong>Generated:</strong> {gen_ts}</div>",
+        "<h2>Run information</h2>",
+        meta_tbl,
+    ]
+    for sec in sections:
+        body_parts.append(f"<h2>{_html_escape(sec.title)}</h2>")
+        body_parts.append(sec.html or "")
 
-    parts = []
-    for s in (sections or []):
-        if isinstance(s, Section):
-            parts.append(f"<h2>{_html_escape(s.title)}</h2>\n{s.html or ''}")
-        else:
-            # fallback: treat as raw html string
-            parts.append(str(s))
-    body = "".join(parts)
-    return head + body + "</body></html>"
+    tail = "</body></html>"
+    return head + "".join(body_parts) + tail
 
 
-def save_html_report(html: str, report_name: str) -> str:
-    """
-    Save the HTML report under REPORTS_DIR. Returns the path written.
-    """
-    reports_dir = Path(SETTINGS.REPORTS_DIR)
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    out_path = reports_dir / f"{report_name}.html"
-    out_path.write_text(html, encoding="utf-8")
-    return str(out_path)
+# -------------------------------------------------------------------
+# HTML → PDF helpers
+# -------------------------------------------------------------------
 
-
-# =========================
-# PDF BUILDING (ReportLab)
-# =========================
-
-# Styles
-_STYLES = getSampleStyleSheet()
-_STYLES.add(ParagraphStyle(name="H1", parent=_STYLES["Heading1"], spaceAfter=8))
-_STYLES.add(ParagraphStyle(name="H2", parent=_STYLES["Heading2"], spaceAfter=6))
-_STYLES.add(ParagraphStyle(name="H3", parent=_STYLES["Heading3"], spaceAfter=6))
-_STYLES.add(ParagraphStyle(name="Body", parent=_STYLES["BodyText"], leading=14))
-if "Code" in _STYLES.byName:
-    _STYLES.add(ParagraphStyle(name="Mono", parent=_STYLES["Code"], fontName="Courier", leading=12))
-else:
-    _STYLES.add(ParagraphStyle(name="Mono", parent=_STYLES["BodyText"], fontName="Courier", leading=12))
-
-# Minimal HTML token regex
-_RE_H1 = re.compile(r"<h1>(.*?)</h1>", re.I | re.S)
-_RE_H2 = re.compile(r"<h2>(.*?)</h2>", re.I | re.S)
-_RE_H3 = re.compile(r"<h3>(.*?)</h3>", re.I | re.S)
-_RE_P = re.compile(r"<p>(.*?)</p>", re.I | re.S)
-_RE_BR = re.compile(r"<br\s*/?>", re.I)
-_RE_PRE = re.compile(r"<pre>(.*?)</pre>", re.I | re.S)
-_RE_CODE = re.compile(r"<code>(.*?)</code>", re.I | re.S)
-_RE_IMG = re.compile(r"<img[^>]*src=['\"](data:image/[^;]+;base64,([^'\"]+))['\"][^>]*>", re.I | re.S)
-# Simple table parsing
-_RE_TABLE = re.compile(r"<table.*?>.*?</table>", re.I | re.S)
-_RE_TR = re.compile(r"<tr.*?>(.*?)</tr>", re.I | re.S)
-_RE_TH = re.compile(r"<th.*?>(.*?)</th>", re.I | re.S)
-_RE_TD = re.compile(r"<td.*?>(.*?)</td>", re.I | re.S)
 _RE_BODY = re.compile(r"<body[^>]*>(.*?)</body>", re.I | re.S)
 _RE_STYLE = re.compile(r"<style.*?>.*?</style>", re.I | re.S)
 _RE_HEAD = re.compile(r"<head.*?>.*?</head>", re.I | re.S)
+_RE_BR = re.compile(r"<br\s*/?>", re.I | re.S)
+_RE_P = re.compile(r"<p.*?>(.*?)</p>", re.I | re.S)
+_RE_H1 = re.compile(r"<h1.*?>(.*?)</h1>", re.I | re.S)
+_RE_H2 = re.compile(r"<h2.*?>(.*?)</h2>", re.I | re.S)
+_RE_H3 = re.compile(r"<h3.*?>(.*?)</h3>", re.I | re.S)
+_RE_PRE = re.compile(r"<pre.*?>(.*?)</pre>", re.I | re.S)
+_RE_TABLE = re.compile(r"<table.*?>.*?</table>", re.I | re.S)
+_RE_TH = re.compile(r"<th.*?>(.*?)</th>", re.I | re.S)
+_RE_TD = re.compile(r"<td.*?>(.*?)</td>", re.I | re.S)
 
-# Placeholder parser (robust)
+# Match <img src="data:image/...base64,...">
+_RE_IMG = re.compile(
+    r"<img[^>]*src=['\"](data:image/[^,]+,[^'\"]+)['\"][^>]*>",
+    re.I | re.S,
+)
+
+# ✅ FIXED: use \d+, not \\d+ (was treating \d literally before)
 _PLACEHOLDER_RE = re.compile(r"^__IMG_PLACEHOLDER_(\d+)__$")
 
 
@@ -215,206 +182,166 @@ def _placeholder_index(seg: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
-def _data_uri_to_image_flowable(data_b64: str, max_width: float) -> Image:
-    img_bytes = base64.b64decode(data_b64)
-    ir = ImageReader(BytesIO(img_bytes))
+def _data_uri_to_image_flowable(data_uri: str, max_width: float) -> Image:
+    """Convert a base64 data URI into a ReportLab Image flowable."""
+    # Accept both full data URI and bare base64
+    if data_uri.startswith("data:") and "," in data_uri:
+        _, b64 = data_uri.split(",", 1)
+    else:
+        b64 = data_uri
+
+    img_bytes = base64.b64decode(b64)
+    buf = BytesIO(img_bytes)
+
+    # Use ImageReader only to get size, then reset buffer
+    ir = ImageReader(buf)
     iw, ih = ir.getSize()
     scale = min(max_width / float(iw), 1.0)
-    return Image(BytesIO(img_bytes), width=iw * scale, height=ih * scale)
+
+    # IMPORTANT: reset buffer so Image() reads from the start
+    buf.seek(0)
+
+    # ReportLab's Image flowable expects a filename or file-like, not ImageReader
+    return Image(buf, width=iw * scale, height=ih * scale)
+
+
+_STYLES = getSampleStyleSheet()
+_STYLES.add(ParagraphStyle(name="Body", parent=_STYLES["Normal"], fontSize=10, leading=12))
+_STYLES.add(
+    ParagraphStyle(
+        name="H2",
+        parent=_STYLES["Heading2"],
+        fontSize=14,
+        leading=16,
+        spaceBefore=12,
+        spaceAfter=4,
+    )
+)
+_STYLES.add(
+    ParagraphStyle(
+        name="H3",
+        parent=_STYLES["Heading3"],
+        fontSize=12,
+        leading=14,
+        spaceBefore=10,
+        spaceAfter=2,
+    )
+)
 
 
 def _parse_table_to_flowable(tbl_html: str) -> Optional[Table]:
-    """
-    Parse a simple HTML table into a ReportLab Table.
-    Handles <thead>, <tbody>, <tr>, and rows that contain both <th> and <td>.
-    """
-    try:
-        rows = _RE_TR.findall(tbl_html)
-        if not rows:
-            return None
+    """Convert basic HTML table to a ReportLab Table."""
+    head_match = re.search(r"<thead.*?>(.*?)</thead>", tbl_html, re.I | re.S)
+    body_match = re.search(r"<tbody.*?>(.*?)</tbody>", tbl_html, re.I | re.S)
+    html_head = head_match.group(1) if head_match else ""
+    html_body = body_match.group(1) if body_match else tbl_html
 
-        data: List[List[str]] = []
-        header_done = False
+    headers = _RE_TH.findall(html_head)
+    rows = []
+    for row_html in re.findall(r"<tr.*?>(.*?)</tr>", html_body, re.I | re.S):
+        cells = _RE_TD.findall(row_html)
+        if cells:
+            rows.append(cells)
 
-        for row_html in rows:
-            ths = _RE_TH.findall(row_html)
-            tds = _RE_TD.findall(row_html)
-
-            # Header row (pure THs)
-            if ths and not tds and not header_done:
-                header_done = True
-                data.append([_html_unescape(re.sub("<.*?>", "", c)).strip() for c in ths])
-                continue
-
-            # Data row with TH in first col and TDs after (e.g., meta tables)
-            if ths and tds:
-                row_cells = [ths[0]] + tds
-                data.append([_html_unescape(re.sub("<.*?>", "", c)).strip() for c in row_cells])
-                continue
-
-            # Pure TD row
-            if tds:
-                data.append([_html_unescape(re.sub("<.*?>", "", c)).strip() for c in tds])
-
-        if not data:
-            return None
-
-        tbl = Table(data, repeatRows=1, splitByRow=1)
-        tbl.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-            ("ALIGN", (0, 0), (-1, 0), "LEFT"),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.white]),
-        ]))
-        return tbl
-    except Exception:
+    if not headers and not rows:
         return None
 
+    data = []
+    if headers:
+        data.append(headers)
+    data.extend(rows)
 
-def _json_to_flowables(text: str) -> List:
-    """
-    If `text` is JSON for performance payload, render as tables:
-      - per_model_metrics: rows with model/RMSE/MAE/R2 (and bp if present)
-      - ensemble_avg_metrics / ensemble_wgt_metrics: small key/value tables
-    Otherwise, return a monospaced block.
-    """
-    try:
-        payload = json.loads(text)
-    except Exception:
-        # not JSON → fallback to monospaced
-        return [Preformatted(text.strip(), _STYLES["Mono"]), Spacer(1, 6)]
-
-    flws: List = []
-
-    # per_model_metrics table
-    pmm = payload.get("per_model_metrics")
-    if isinstance(pmm, list) and pmm:
-        # columns (include bp if present)
-        cols = ["model", "RMSE", "MAE", "R2"]
-        if any("bp" in r for r in pmm):
-            cols.append("bp")
-        data = [cols]
-        for r in pmm:
-            row = []
-            for c in cols:
-                v = r.get(c, "")
-                if isinstance(v, float):
-                    v = f"{v:,.4f}"
-                row.append(str(v))
-            data.append(row)
-        tbl = Table(data, repeatRows=1, splitByRow=1)
-        tbl.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-            ("ALIGN", (0, 0), (-1, 0), "LEFT"),
+    tbl = Table(data, repeatRows=1 if headers else 0)
+    style = TableStyle(
+        [
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ]))
-        flws += [Paragraph("Per-model metrics", _STYLES["H3"]), tbl, Spacer(1, 8)]
-
-    # ensemble avg / weighted tables
-    for key, title in [
-        ("ensemble_avg_metrics", "Ensemble (average)"),
-        ("ensemble_wgt_metrics", "Ensemble (weighted by 1/RMSE)"),
-    ]:
-        m = payload.get(key)
-        if isinstance(m, dict) and m:
-            data = [["Metric", "Value"]] + [[k, f"{v:,.4f}" if isinstance(v, float) else str(v)] for k, v in m.items()]
-            tbl = Table(data, repeatRows=1)
-            tbl.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("ALIGN", (0, 0), (-1, 0), "LEFT"),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ]))
-            flws += [Paragraph(title, _STYLES["H3"]), tbl, Spacer(1, 8)]
-
-    if not flws:
-        # JSON but not the structure we know → pretty print
-        return [Preformatted(json.dumps(payload, indent=2), _STYLES["Mono"]), Spacer(1, 6)]
-    return flws
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("LEFTPADDING", (0, 0), (-1, -1), 2),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ]
+    )
+    tbl.setStyle(style)
+    return tbl
 
 
-def _html_to_story(html: str, page_width: float) -> List:
+def _html_to_story(html: str, page_width: float) -> List[Any]:
     """
-    Convert a small subset of HTML to ReportLab flowables and
-    force the 'Dataset Preview' section to the very end of the PDF.
-    Supports: h1/h2/h3, p, br, pre/code (with JSON→tables), img (base64), table/th/td.
+    Convert a subset of HTML to ReportLab flowables:
+      - h1/h2/h3
+      - p
+      - pre
+      - table
+      - img (data URI)
     """
-    story: List = []
-    preview_story: List = []  # captured 'Dataset Preview' section goes here
+    from reportlab.platypus import Paragraph
+    import html as _html_mod
+
+    story: List[Any] = []
     if not html:
         return story
 
-    # Keep only body and strip head/style so CSS doesn’t print
     m = _RE_BODY.search(html)
     html = m.group(1) if m else html
     html = _RE_STYLE.sub("", html)
     html = _RE_HEAD.sub("", html)
 
-    # Extract base64 images and replace with placeholders
     imgs: List[str] = []
 
     def _img_repl(m: re.Match) -> str:
-        imgs.append(m.group(2))
+        # store the full data URI (data:image/...base64,...)
+        imgs.append(m.group(1))
         return f"__IMG_PLACEHOLDER_{len(imgs) - 1}__"
 
+    # Replace <img> tags with placeholders, keep URIs in imgs[]
     html = _RE_IMG.sub(_img_repl, html)
 
-    # Tokenize by known block tags (include <table>)
-    token_pat = re.compile(
-        r"(<h1>.*?</h1>|<h2>.*?</h2>|<h3>.*?</h3>|<pre>.*?</pre>|<code>.*?</code>|<p>.*?</p>|<table.*?>.*?</table>)",
-        re.I | re.S,
+    # use \d+ in the split so it matches the placeholders we generate
+    chunks = re.split(
+        r"(?i)(<h1.*?>.*?</h1>|<h2.*?>.*?</h2>|<h3.*?>.*?</h3>|<p.*?>.*?</p>|<pre.*?>.*?</pre>|<table.*?>.*?</table>)",
+        html,
     )
-    parts = [p for p in token_pat.split(html) if p and p.strip()]
 
-    # Helper to render one "chunk" into a target list (story or preview_story)
-    def _render_chunk(chunk: str, target: List):
-        # Headings
+    def _append_chunk(chunk: str):
+        chunk = chunk.strip()
+        if not chunk:
+            return
+
         if _RE_H1.match(chunk):
             txt = _RE_H1.findall(chunk)[0]
-            target.append(Paragraph(_normalize_breaks(txt), _STYLES["H1"]))
-            target.append(Spacer(1, 6))
-            return True
+            story.append(Paragraph(_normalize_breaks(txt), _STYLES["Heading1"]))
+            story.append(Spacer(1, 8))
+            return
+
         if _RE_H2.match(chunk):
             txt = _RE_H2.findall(chunk)[0]
-            target.append(Paragraph(_normalize_breaks(txt), _STYLES["H2"]))
-            target.append(Spacer(1, 6))
-            return True
+            story.append(Paragraph(_normalize_breaks(txt), _STYLES["H2"]))
+            story.append(Spacer(1, 6))
+            return
+
         if _RE_H3.match(chunk):
             txt = _RE_H3.findall(chunk)[0]
-            target.append(Paragraph(_normalize_breaks(txt), _STYLES["H3"]))
-            target.append(Spacer(1, 6))
-            return True
+            story.append(Paragraph(_normalize_breaks(txt), _STYLES["H3"]))
+            story.append(Spacer(1, 4))
+            return
 
-        # Pre/Code
         if _RE_PRE.match(chunk):
             txt = _RE_PRE.findall(chunk)[0]
-            target += _json_to_flowables(_html_unescape(txt))
-            return True
-        if _RE_CODE.match(chunk):
-            txt = _RE_CODE.findall(chunk)[0]
-            txt = _RE_BR.sub("\n", txt)
-            target.append(Preformatted(txt.strip(), _STYLES["Mono"]))
-            target.append(Spacer(1, 6))
-            return True
+            txt = _html_mod.unescape(txt)
+            story.append(Preformatted(_normalize_breaks(txt), _STYLES["Code"]))
+            story.append(Spacer(1, 6))
+            return
 
-        # Table
         if _RE_TABLE.match(chunk):
             tbl = _parse_table_to_flowable(chunk)
-            if tbl is not None:
-                target.append(tbl)
-                target.append(Spacer(1, 8))
-                return True
-            # fall through to text if parsing failed
+            if tbl:
+                story.append(tbl)
+                story.append(Spacer(1, 8))
+                return
 
-        # Paragraphs: may contain image placeholders
         if _RE_P.match(chunk):
             body = _RE_P.findall(chunk)[0]
             segments = re.split(r"(__IMG_PLACEHOLDER_\d+__)", body)
@@ -423,150 +350,453 @@ def _html_to_story(html: str, page_width: float) -> List:
                     idx = _placeholder_index(seg)
                     if idx is None or idx < 0 or idx >= len(imgs):
                         continue
-                    target.append(_data_uri_to_image_flowable(imgs[idx], page_width))
-                    target.append(Spacer(1, 6))
+                    story.append(_data_uri_to_image_flowable(imgs[idx], page_width))
+                    story.append(Spacer(1, 6))
                 else:
                     txt = _normalize_breaks(seg)
                     if txt.strip():
-                        target.append(Paragraph(txt, _STYLES["Body"]))
-                        target.append(Spacer(1, 4))
-            return True
+                        story.append(Paragraph(txt, _STYLES["Body"]))
+                        story.append(Spacer(1, 4))
+            return
 
-        # Fallback: any stray placeholders or text
+        # fallback
         segments = re.split(r"(__IMG_PLACEHOLDER_\d+__)", chunk)
         for seg in segments:
             if seg.startswith("__IMG_PLACEHOLDER_"):
                 idx = _placeholder_index(seg)
                 if idx is None or idx < 0 or idx >= len(imgs):
                     continue
-                target.append(_data_uri_to_image_flowable(imgs[idx], page_width))
-                target.append(Spacer(1, 6))
+                story.append(_data_uri_to_image_flowable(imgs[idx], page_width))
+                story.append(Spacer(1, 6))
             else:
                 txt = _normalize_breaks(seg)
                 if txt.strip():
-                    target.append(Paragraph(txt, _STYLES["Body"]))
-                    target.append(Spacer(1, 4))
-        return True
+                    story.append(Paragraph(txt, _STYLES["Body"]))
+                    story.append(Spacer(1, 4))
 
-    # Walk parts; when we hit an H2 named 'Dataset Preview', start capturing into preview_story
-    i = 0
-    while i < len(parts):
-        chunk = parts[i]
-        # Detect an <h2> and read its text
-        if _RE_H2.match(chunk):
-            h2_txt = _RE_H2.findall(chunk)[0].strip()
-            is_preview_h2 = ("dataset preview" in h2_txt.lower())
-            if is_preview_h2:
-                # Start capturing this H2 and everything until the next H2 into preview_story
-                _render_chunk(chunk, preview_story)  # the H2 itself
-                i += 1
-                # capture following chunks until next H2 or end
-                while i < len(parts) and not _RE_H2.match(parts[i]):
-                    _render_chunk(parts[i], preview_story)
-                    i += 1
-                # do NOT render this section now; it will be appended at the end with a PageBreak
-                continue
-            else:
-                _render_chunk(chunk, story)
-                i += 1
-                continue
-
-        # Not an H2 — render to main story unless we’re already capturing (handled above)
-        _render_chunk(chunk, story)
-        i += 1
-
-    # If we captured a preview section, push it to the end with a page break
-    if preview_story:
-        story.append(PageBreak())
-        story.extend(preview_story)
+    for c in chunks:
+        _append_chunk(c)
 
     return story
 
 
-def df_to_table(df, max_rows: int = 25):
-    """Convert a DataFrame head to a compact ReportLab Table flowable list (for PDF)."""
-    try:
-        import pandas as pd  # local import
-    except Exception:
-        return []
+def df_to_table(df, max_rows: int = 25) -> List[Any]:
+    """Convert a DataFrame to a ReportLab table."""
+    import pandas as pd
 
     if df is None:
         return []
-    d = df.head(max_rows)
-    if d.empty:
-        return []
 
-    data = [list(map(str, d.columns))] + d.astype(str).values.tolist()
+    if not isinstance(df, pd.DataFrame):
+        df = pd.DataFrame(df)
+
+    df = df.head(max_rows)
+    data = [list(df.columns)]
+    data.extend(df.values.tolist())
+
     tbl = Table(data, repeatRows=1)
-    tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-        ("ALIGN", (0, 0), (-1, 0), "LEFT"),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.white]),
-    ]))
+    style = TableStyle(
+        [
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("LEFTPADDING", (0, 0), (-1, -1), 2),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ]
+    )
+    tbl.setStyle(style)
     return [tbl, Spacer(1, 8)]
-
-
-from io import BytesIO
-
-...
 
 
 def build_pdf_from_html(
         html_report: str,
         report_name: str,
         base_dir: str,
-        df_preview=None,  # optional DataFrame to include as a page
+        df_preview=None,
 ) -> str:
     """
-    Convert a **subset** of HTML (incl. tables & images) to a paginated PDF using ReportLab,
-    then persist it via data_io_utils.save_report_pdf, abstracting over LOCAL vs S3.
-
-    Args:
-      html_report: HTML string you also render in Streamlit.
-      report_name: file name without extension.
-      base_dir: logical subdir / run_id where the report should be stored.
-      df_preview: optional DataFrame for an extra 'Dataset Preview' page.
-
-    Returns:
-      LOCAL → filesystem path as str
-      S3    → s3://bucket/key URI
+    Convert HTML to PDF and persist it via save_report_pdf (LOCAL or S3).
     """
-    # Build PDF into memory first
     buf = BytesIO()
-
-    left, right, top, bottom = (36, 36, 36, 36)
     doc = SimpleDocTemplate(
         buf,
         pagesize=letter,
-        leftMargin=left, rightMargin=right, topMargin=top, bottomMargin=bottom,
+        leftMargin=36,
+        rightMargin=36,
+        topMargin=40,
+        bottomMargin=40,
     )
 
-    story: List = []
+    story: List[Any] = []
     page_width = doc.width
-
-    # Convert HTML (head/sections) to flowables
     story += _html_to_story(html_report, page_width)
 
-    # Optional DataFrame preview page rendered as a proper table
     if df_preview is not None:
         story.append(PageBreak())
-        story.append(Paragraph("Dataset Preview (first rows)", _STYLES["H2"]))
+        story.append(Paragraph("Dataset preview (first rows)", _STYLES["H2"]))
         story += df_to_table(df_preview, max_rows=25)
 
     def _numbered(canvas, doc_):
         canvas.saveState()
         canvas.setFont("Helvetica", 9)
-        canvas.drawRightString(doc_.pagesize[0] - right, 20, f"Page {doc_.page}")
+        canvas.drawRightString(doc_.pagesize[0] - 36, 20, f"Page {doc_.page}")
         canvas.restoreState()
 
     doc.build(story, onFirstPage=_numbered, onLaterPages=_numbered)
-
     pdf_bytes = buf.getvalue()
     buf.close()
 
-    # Persist via data_io_utils (LOCAL or S3)
     return save_report_pdf(base_dir=base_dir, name=report_name, pdf_bytes=pdf_bytes)
+
+
+# -------------------------------------------------------------------
+# PPE-specific report sections
+# -------------------------------------------------------------------
+
+def _build_eda_section(df) -> Section:
+    """Quantitative data exploration section, with stats + basic charts."""
+    html_parts: List[str] = []
+    html_parts.append(
+        "<p>This section summarizes the main characteristics of the dataset "
+        "used by the Predictive Pricing Engine data product.</p>"
+    )
+
+    # ------------------------------------------------------------------
+    # Summary statistics
+    # ------------------------------------------------------------------
+    try:
+        desc = df.describe(include="all").transpose()
+        desc_html = desc.to_html(classes="tbl", border=0)
+    except Exception:
+        desc_html = "<div class='muted'>Summary statistics could not be computed.</div>"
+
+    html_parts.append("<h3>Summary statistics</h3>")
+    html_parts.append(desc_html)
+
+    # ------------------------------------------------------------------
+    # Numeric distribution (first numeric column)
+    # ------------------------------------------------------------------
+    num_cols = list(df.select_dtypes(include="number").columns) if df is not None else []
+    if num_cols:
+        num_col = num_cols[0]
+        try:
+            fig, ax = plt.subplots()
+            df[num_col].dropna().hist(ax=ax, bins=30)
+            ax.set_title(f"Distribution of {num_col}")
+            ax.set_xlabel(num_col)
+            ax.set_ylabel("Count")
+            fig.tight_layout()
+
+            buf = BytesIO()
+            fig.savefig(buf, format="png", bbox_inches="tight")
+            buf.seek(0)
+            data_b64 = base64.b64encode(buf.read()).decode("ascii")
+            plt.close(fig)
+
+            uri = f"data:image/png;base64,{data_b64}"
+            html_parts.append(f"<h3>Numeric distribution – {_html_escape(num_col)}</h3>")
+            html_parts.append(f"<img src='{uri}'/>")
+        except Exception:
+            # don't break the report if plotting fails
+            plt.close("all")
+
+    # ------------------------------------------------------------------
+    # Categorical frequency (non-numeric column)
+    # ------------------------------------------------------------------
+    cat_cols = list(df.select_dtypes(exclude="number").columns) if df is not None else []
+    if cat_cols:
+        cat_col = cat_cols[0]
+        try:
+            vc = df[cat_col].astype("string").value_counts().head(20)
+
+            fig, ax = plt.subplots()
+            vc.plot(kind="bar", ax=ax)
+            ax.set_title(f"Top categories in {cat_col}")
+            ax.set_xlabel(cat_col)
+            ax.set_ylabel("Count")
+            fig.tight_layout()
+
+            buf = BytesIO()
+            fig.savefig(buf, format="png", bbox_inches="tight")
+            buf.seek(0)
+            data_b64 = base64.b64encode(buf.read()).decode("ascii")
+            plt.close(fig)
+
+            uri = f"data:image/png;base64,{data_b64}"
+            html_parts.append(f"<h3>Categorical distribution – {_html_escape(cat_col)}</h3>")
+            html_parts.append(f"<img src='{uri}'/>")
+        except Exception:
+            plt.close("all")
+
+    return Section("Quantitative Data Exploration", "".join(html_parts))
+
+
+def _build_visual_section(df) -> Section:
+    """Visual exploration of numeric relationships (scatter + optional correlation)."""
+    html_parts: List[str] = []
+    html_parts.append(
+        "<p>This section provides visual exploration of relationships between numeric variables.</p>"
+    )
+
+    num_cols = list(df.select_dtypes(include="number").columns)
+    # Simple scatter (first two numeric columns)
+    if len(num_cols) >= 2:
+        x_col, y_col = num_cols[0], num_cols[1]
+        fig, ax = plt.subplots()
+        ax.scatter(df[x_col], df[y_col], alpha=0.35)
+        ax.set_xlabel(x_col)
+        ax.set_ylabel(y_col)
+        ax.set_title(f"{y_col} vs {x_col}")
+
+        buf = BytesIO()
+        fig.savefig(buf, format="png", bbox_inches="tight")
+        buf.seek(0)
+        data_b64 = base64.b64encode(buf.read()).decode("ascii")
+        plt.close(fig)
+        uri = f"data:image/png;base64,{data_b64}"
+        html_parts.append(f"<h3>{_html_escape(y_col)} vs {_html_escape(x_col)}</h3>")
+        html_parts.append(f"<img src='{uri}'/>")
+
+    # Optionally add a small correlation heatmap (first few numeric columns)
+    if len(num_cols) >= 2:
+        cols = num_cols[:8]
+        corr = df[cols].corr()
+        fig, ax = plt.subplots()
+        cax = ax.imshow(corr, interpolation="nearest")
+        ax.set_xticks(range(len(cols)))
+        ax.set_xticklabels(cols, rotation=45, ha="right")
+        ax.set_yticks(range(len(cols)))
+        ax.set_yticklabels(cols)
+        ax.set_title("Correlation heatmap")
+        fig.colorbar(cax, ax=ax, fraction=0.046, pad=0.04)
+        fig.tight_layout()
+
+        buf = BytesIO()
+        fig.savefig(buf, format="png", bbox_inches="tight")
+        buf.seek(0)
+        data_b64 = base64.b64encode(buf.read()).decode("ascii")
+        plt.close(fig)
+        uri = f"data:image/png;base64,{data_b64}"
+        html_parts.append("<h3>Correlation heatmap</h3>")
+        html_parts.append(f"<img src='{uri}'/>")
+
+    return Section("Visual Exploration", "".join(html_parts))
+
+
+def _build_model_section(
+        per_model_metrics: Optional[List[Dict[str, Any]]] = None,
+        ensemble_avg_metrics: Optional[Dict[str, Any]] = None,
+        ensemble_wgt_metrics: Optional[Dict[str, Any]] = None,
+        bp_results: Optional[Dict[str, Any]] = None,
+        y_true=None,
+        y_pred=None,
+        model=None,
+        x_valid=None,
+        y_valid=None,
+        x_sample=None,
+) -> Section:
+    """
+    Model performance & analytics section.
+    Uses your visual_tools charts for residual diagnostics and explain_utils
+    for permutation importance + SHAP.
+    """
+    html_parts: List[str] = []
+    html_parts.append(
+        "<p>This section summarizes model performance metrics, residual diagnostics, "
+        "and feature-level explainability for the Predictive Pricing Engine.</p>"
+    )
+
+    if per_model_metrics:
+        html_parts.append("<h3>Per-model metrics</h3>")
+        html_parts.append(_html_table_from_records(per_model_metrics))
+
+    if ensemble_avg_metrics:
+        html_parts.append("<h3>Ensemble (average) metrics</h3>")
+        html_parts.append(_html_table_from_mapping(ensemble_avg_metrics))
+
+    if ensemble_wgt_metrics:
+        html_parts.append("<h3>Ensemble (weighted by 1/RMSE) metrics</h3>")
+        html_parts.append(_html_table_from_mapping(ensemble_wgt_metrics))
+
+    if bp_results:
+        html_parts.append("<h3>Breusch–Pagan test</h3>")
+        html_parts.append(_html_table_from_mapping(bp_results))
+
+    # --- permutation importance ---
+    if model is not None and x_valid is not None and y_valid is not None:
+        try:
+            pi_df = permutation_importance_scores(model, x_valid, y_valid, n_repeats=5)
+            if not pi_df.empty:
+                html_parts.append("<h3>Permutation importance (validation set)</h3>")
+                html_parts.append(
+                    pi_df.head(20).to_html(index=False, classes="tbl", border=0)
+                )
+        except Exception:
+            # fail quietly, report still works
+            pass
+
+    # --- SHAP mean |SHAP| summary ---
+    if model is not None and x_sample is not None:
+        try:
+            shap_df = shap_summary_df(model, x_sample)
+            if not shap_df.empty:
+                html_parts.append("<h3>SHAP mean |SHAP| (top features)</h3>")
+                html_parts.append(
+                    shap_df.head(20).to_html(index=False, classes="tbl", border=0)
+                )
+        except Exception:
+            pass
+
+    # Residual diagnostics using existing visual_tools helpers
+    if y_true is not None and y_pred is not None:
+        import pandas as pd
+
+        y_true_s = pd.Series(y_true)
+        y_pred_s = pd.Series(y_pred)
+
+        uri1 = chart_actual_vs_pred(y_true_s, y_pred_s)
+        uri2 = chart_residuals(y_true_s, y_pred_s)
+        uri3 = chart_residuals_qq(y_true_s, y_pred_s)
+
+        html_parts.append("<h3>Actual vs Predicted</h3>")
+        html_parts.append(f"<img src='{uri1}'/>")
+        html_parts.append("<h3>Residuals vs Predicted</h3>")
+        html_parts.append(f"<img src='{uri2}'/>")
+        html_parts.append("<h3>Residuals Q–Q plot</h3>")
+        html_parts.append(f"<img src='{uri3}'/>")
+
+    return Section("Model Performance & Analytics", "".join(html_parts))
+
+
+# -------------------------------------------------------------------
+# Public report generators (one per report type)
+# -------------------------------------------------------------------
+
+def generate_eda_report(run_id: str, df, report_name: str = "eda_report") -> str:
+    """Quantitative data exploration report."""
+    row_count = int(len(df)) if df is not None else 0
+    meta = {
+        "Run id": run_id,
+        "Rows in dataset": row_count,
+    }
+
+    if df is not None and row_count > 0:
+        sections = [_build_eda_section(df)]
+        df_preview = df.head(25)
+    else:
+        sections = [
+            Section(
+                "Quantitative Data Exploration",
+                "<p class='muted'>No dataset available.</p>",
+            )
+        ]
+        df_preview = None
+
+    html = build_html_report(f"{APP_NAME} – Quantitative Data Exploration", meta, sections)
+    return build_pdf_from_html(html, report_name, base_dir=run_id, df_preview=df_preview)
+
+
+def generate_visualization_report(run_id: str, df, report_name: str = "visual_report") -> str:
+    """Visual exploration report."""
+    row_count = int(len(df)) if df is not None else 0
+    meta = {
+        "Run id": run_id,
+        "Rows in dataset": row_count,
+    }
+
+    if df is not None and row_count > 0:
+        sections = [_build_visual_section(df)]
+        df_preview = df.head(25)
+    else:
+        sections = [
+            Section("Visual Exploration", "<p class='muted'>No dataset available.</p>")
+        ]
+        df_preview = None
+
+    html = build_html_report(f"{APP_NAME} – Visual Exploration", meta, sections)
+    return build_pdf_from_html(html, report_name, base_dir=run_id, df_preview=df_preview)
+
+
+def generate_model_analytics_report(
+        run_id: str,
+        *,
+        per_model_metrics: Optional[List[Dict[str, Any]]] = None,
+        ensemble_avg_metrics: Optional[Dict[str, Any]] = None,
+        ensemble_wgt_metrics: Optional[Dict[str, Any]] = None,
+        bp_results: Optional[Dict[str, Any]] = None,
+        y_true=None,
+        y_pred=None,
+        model=None,
+        x_valid=None,
+        y_valid=None,
+        x_sample=None,
+        report_name: str = "model_analytics_report",
+) -> str:
+    """Model performance & analytics report."""
+    meta = {
+        "Run id": run_id,
+    }
+
+    sections = [
+        _build_model_section(
+            per_model_metrics=per_model_metrics,
+            ensemble_avg_metrics=ensemble_avg_metrics,
+            ensemble_wgt_metrics=ensemble_wgt_metrics,
+            bp_results=bp_results,
+            y_true=y_true,
+            y_pred=y_pred,
+            model=model,
+            x_valid=x_valid,
+            y_valid=y_valid,
+            x_sample=x_sample,
+        )
+    ]
+
+    html = build_html_report(f"{APP_NAME} – Model Analytics", meta, sections)
+    return build_pdf_from_html(html, report_name, base_dir=run_id, df_preview=None)
+
+
+def generate_full_technical_report(
+        run_id: str,
+        *,
+        df,
+        per_model_metrics: Optional[List[Dict[str, Any]]] = None,
+        ensemble_avg_metrics: Optional[Dict[str, Any]] = None,
+        ensemble_wgt_metrics: Optional[Dict[str, Any]] = None,
+        bp_results: Optional[Dict[str, Any]] = None,
+        y_true=None,
+        y_pred=None,
+        report_name: str = "technical_summary_report",
+) -> str:
+    """
+    Combined technical summary (EDA + visual + model analytics) for the run.
+    """
+    row_count = int(len(df)) if df is not None else 0
+    meta = {
+        "Run id": run_id,
+        "Rows in dataset": row_count,
+    }
+
+    sections: List[Section] = []
+    df_preview = None
+    if df is not None and row_count > 0:
+        sections.append(_build_eda_section(df))
+        sections.append(_build_visual_section(df))
+        df_preview = df.head(25)
+
+    sections.append(
+        _build_model_section(
+            per_model_metrics=per_model_metrics,
+            ensemble_avg_metrics=ensemble_avg_metrics,
+            ensemble_wgt_metrics=ensemble_wgt_metrics,
+            bp_results=bp_results,
+            y_true=y_true,
+            y_pred=y_pred,
+        )
+    )
+
+    html = build_html_report(f"{APP_NAME} – Technical Summary", meta, sections)
+    return build_pdf_from_html(html, report_name, base_dir=run_id, df_preview=df_preview)

@@ -361,7 +361,7 @@ def render():
                 df[features + [target]],
                 target,
                 selected_models,
-                params_map
+                params_map,
             )
 
         st.subheader("Per-model Validation Metrics")
@@ -371,9 +371,10 @@ def render():
         avg = combine_average(base_train_out)
         wgt = combine_weighted_inverse_rmse(base_train_out)
 
-        # Result predictions (prefer combined weighted or fallback to average)
-        y_true = base_train_out["y_valid"]
+        # Validation ground truth and display predictions
+        y_valid = base_train_out["y_valid"]
         y_pred, pred_src = _choose_display_pred(base_train_out, wgt, avg)
+        y_true = y_valid  # for backward compatibility with existing naming
 
         st.subheader("Ensemble (automatic)")
         st.markdown("**Simple Average**")
@@ -381,7 +382,42 @@ def render():
         st.markdown("**Weighted Average (by inverse RMSE)**")
         st.json(wgt["metrics"])
 
-        # Persist context
+        # ----------------------------
+        # NEW: choose model + X_valid + X_sample for explainability
+        # ----------------------------
+        x_valid = base_train_out.get("X_valid")
+        model_for_explain = None
+        x_sample = None
+
+        # Pick the best base model by RMSE (same logic as before, but explicit here)
+        per_model_metrics = base_train_out.get("per_model_metrics") or []
+        best_model_name = None
+        if per_model_metrics:
+            try:
+                best_row = min(per_model_metrics, key=lambda r: r["RMSE"])
+                best_model_name = str(best_row.get("model"))
+            except Exception as ex:  # defensive, never break training
+                LOGGER.warning(f"Could not determine best model for explainability: {ex}")
+
+        # Try to grab the fitted model object from the training output
+        models_dict = base_train_out.get("models") or base_train_out.get("fitted_models") or {}
+        if best_model_name and isinstance(models_dict, dict):
+            model_for_explain = models_dict.get(best_model_name)
+
+        # Sample a smaller subset for SHAP to keep it tractable
+        if x_valid is not None:
+            try:
+                x_sample = x_valid.sample(
+                    n=min(200, len(x_valid)),
+                    random_state=42,
+                )
+            except Exception as ex:
+                LOGGER.warning(f"Unable to sample X_valid for SHAP: {ex}")
+                x_sample = None
+
+        # ----------------------------
+        # Persist context (artifacts + session state)
+        # ----------------------------
         artifact_location = save_model_artifacts(
             run_id=run_id,
             base_out=base_train_out,
@@ -394,6 +430,7 @@ def render():
         )
         st.session_state["model_trained"] = True
 
+        # NOTE: new arguments at the tail: model_for_explain, X_valid, y_valid, X_sample
         store_last_model_info_in_session(
             base_train_out,
             avg,
@@ -402,7 +439,11 @@ def render():
             y_pred,
             pred_src,
             params_map,
-            selected_models
+            selected_models,
+            model_for_explain,
+            x_valid,
+            y_valid,
+            x_sample,
         )
 
         store_last_run_model_dir_in_session(artifact_location)
