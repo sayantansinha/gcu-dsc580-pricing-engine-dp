@@ -4,7 +4,7 @@ data "aws_iam_policy_document" "ec2_trust" {
     actions = ["sts:AssumeRole"]
 
     principals {
-      type = "Service"
+      type        = "Service"
       identifiers = ["ec2.amazonaws.com"]
     }
   }
@@ -42,12 +42,12 @@ resource "aws_iam_role_policy" "ec2_role_ssm_policy" {
 # Tight S3 RW policy for just your buckets
 data "aws_iam_policy_document" "s3_rw" {
   statement {
-    actions = ["s3:ListAllMyBuckets"]
+    actions   = ["s3:ListAllMyBuckets"]
     resources = ["*"]
   }
 
   statement {
-    actions = ["s3:GetBucketLocation", "s3:ListBucket"]
+    actions   = ["s3:GetBucketLocation", "s3:ListBucket"]
     resources = [for b in local.buckets_all : "arn:aws:s3:::${b}"]
   }
 

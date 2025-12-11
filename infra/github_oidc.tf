@@ -1,10 +1,4 @@
-# OIDC provider for GitHub Actions (once per account)
-resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"] # GitHub's
-}
-
+# # OIDC provider for GitHub Actions - pre-created
 # Role that GitHub Actions will assume to deploy
 resource "aws_iam_role" "gha_deployer" {
   name = "${local.app_prefix}-gha-deployer"
@@ -13,7 +7,7 @@ resource "aws_iam_role" "gha_deployer" {
     Statement = [
       {
         Effect    = "Allow",
-        Principal = { Federated = aws_iam_openid_connect_provider.github.arn },
+        Principal = { Federated = "arn:aws:iam::236453359468:oidc-provider/token.actions.githubusercontent.com" },
         Action    = "sts:AssumeRoleWithWebIdentity",
         Condition = {
           StringEquals = {
@@ -22,7 +16,7 @@ resource "aws_iam_role" "gha_deployer" {
           StringLike = {
             # limit to your repo and default branches/tags
             "token.actions.githubusercontent.com:sub" = [
-              "repo:sayantansinha/gcu-dsc580-pricing-engine-dp:ref:refs/heads/aws_deploy",
+              "repo:sayantansinha/gcu-dsc580-pricing-engine-dp:ref:refs/heads/main",
               "repo:sayantansinha/gcu-dsc580-pricing-engine-dp:ref:refs/tags/*"
             ]
           }
@@ -56,6 +50,7 @@ resource "aws_iam_policy" "gha_deploy_policy" {
         Action = [
           "codedeploy:CreateDeployment",
           "codedeploy:RegisterApplicationRevision",
+          "codedeploy:GetApplicationRevision",
           "codedeploy:GetDeployment",
           "codedeploy:GetDeploymentConfig",
           "codedeploy:GetApplication",

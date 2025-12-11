@@ -2,7 +2,7 @@ version: 0.0
 os: linux
 files:
   - source: /
-    destination: /opt/ppe-app
+    destination: /opt/app
     overwrite: true
 
 hooks:
@@ -11,9 +11,9 @@ hooks:
       timeout: 300
       runas: root
   AfterInstall:
-    - location: deploy_scripts/install_deps.sh
-      timeout: 900
-      runas: ec2-user
+    - location: deploy_scripts/install_service.sh
+      timeout: 300
+      runas: root
   ApplicationStart:
     - location: deploy_scripts/restart_service.sh
       timeout: 120
